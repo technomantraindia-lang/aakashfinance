@@ -5167,6 +5167,18 @@ function autoClosingPrincipal(row) {
     if (extraPaidCount <= 0 || emiAmount <= 0) return snapshotClosing;
     return amortizeClosingPrincipal(snapshotClosing, emiAmount, interestRate, extraPaidCount);
   }
+  // If the bank closing column was unreadable, use the validated schedule's
+  // principal breakup instead of carrying forward an older/stale POS value.
+  // This is exact for AU schedules: loan amount minus principal paid in all
+  // paid installments equals the bank's closing principal.
+  const schedulePrincipalPaid = Array.isArray(row.emiSchedule)
+    ? row.emiSchedule
+      .filter((entry) => entry?.status === "Paid")
+      .reduce((sum, entry) => sum + Math.max(toNumber(entry?.principal), 0), 0)
+    : 0;
+  if (loanAmount > 0 && schedulePrincipalPaid > 0) {
+    return Math.max(loanAmount - schedulePrincipalPaid, 0);
+  }
   if (loanAmount <= 0 || emiAmount <= 0 || tenure <= 0) return savedClosing;
   return amortizeClosingPrincipal(loanAmount, emiAmount, interestRate, paidCount);
 }
@@ -5322,6 +5334,9 @@ function sanitizePdfRowForMerge(row) {
   const blockedWithoutSchedule = new Set(["loanAmount", "tenure", "paidEmi", "interestRate", "bankClosingPrincipal"]);
   return Object.fromEntries(Object.entries(row).filter(([key, value]) => {
     if (key.startsWith("_")) return false;
+    // Preserve an explicit blank schedule closing value so a previous bad
+    // import cannot survive a corrected PDF re-import.
+    if (key === "bankClosingPrincipal" && scheduleParsed && value === "") return true;
     if (!value) return false;
     if (Array.isArray(value) && value.length === 0) return false;
     if (blockedWithoutSchedule.has(key) && !trustedPdfFields) return false;

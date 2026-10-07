@@ -51,5 +51,8 @@ assert.equal(parsed.scheduleParsed, "yes");
 const badClosingText = text.replace("2,538,839", "25,653,712");
 const sanitized = context.normalizePdfFinanceRow(context.parseBankPdfText(badClosingText, "au-repayment-schedule.pdf"));
 assert.equal(sanitized.bankClosingPrincipal, "");
+const sanitizedForMerge = context.sanitizePdfRowForMerge(sanitized);
+assert.ok(Object.prototype.hasOwnProperty.call(sanitizedForMerge, "bankClosingPrincipal"));
+assert.equal(sanitizedForMerge.bankClosingPrincipal, "");
 
 console.log("AU Small Finance repayment schedule parser passed");
