@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MarketplaceChat, ChatRequestButton, useMarketplaceChat } from "./MarketplaceChat";
 import loginBackground from "./assets/background.png";
+import myFleetLogo from "../../assets/My_Fleet_512x512.png";
 import * as pdfjsLib from "pdfjs-dist";
 import { createWorker } from "tesseract.js";
 import * as XLSX from "xlsx";
@@ -32,7 +33,8 @@ function getApiBase() {
 const API_BASE = getApiBase();
 
 const LOGIN_KEY = "kuber-admin-session";
-const PENDING_SYNC_KEY = "kuber-finance-pending-sync-v1";
+// v2 prevents an old/incompatible browser sync queue from blocking the current database data.
+const PENDING_SYNC_KEY = "kuber-finance-pending-sync-v2";
 
 function loadSession() {
   try {
@@ -111,9 +113,9 @@ function LoginPage({ onLogin }) {
       >
         <div className="login-hero-glow" aria-hidden="true" />
         <div className="login-hero-brand">
-          <span className="login-logo">K</span>
+          <img className="login-logo" src={myFleetLogo} alt="My Fleet" />
           <div>
-            <strong>Kuber Finance</strong>
+            <strong>My Fleet</strong>
             <small>Fleet Finance CRM</small>
           </div>
         </div>
@@ -187,7 +189,7 @@ function LoginPage({ onLogin }) {
         </div>
 
         <div className="login-hero-footer">
-          <span>© 2026 Kuber Finance · All rights reserved</span>
+          <span>© 2026 My Fleet · All rights reserved</span>
         </div>
       </aside>
 
@@ -291,6 +293,9 @@ function LoginPage({ onLogin }) {
 
           <p className="login-hint">
             Accounts are created by the admin. Contact your administrator for credentials.
+          </p>
+          <p className="login-privacy-link">
+            <a href="/privacy-policy" target="_blank" rel="noreferrer">Privacy Policy</a>
           </p>
         </div>
       </main>
@@ -772,6 +777,8 @@ async function syncDataToBackend(data, token) {
 
 export default function App() {
   const [session, setSession] = useState(loadSession);
+  const publicPath = window.location.pathname.replace(/\/+$/, "") || "/";
+  if (publicPath === "/privacy-policy") return <PrivacyPolicyPage />;
   const handleLogin = (nextSession) => {
     saveSession(nextSession);
     setSession(nextSession);
@@ -790,6 +797,86 @@ export default function App() {
   return <AdminApp session={session} onLogout={() => { clearSession(); setSession(null); }} />;
 }
 
+function PrivacyPolicyPage() {
+  return (
+    <main className="public-policy-page">
+      <article className="public-policy-card">
+        <p className="public-policy-kicker">MY FLEET</p>
+        <h1>Privacy Policy</h1>
+        <p className="public-policy-updated"><strong>Effective date:</strong> September 28, 2026</p>
+
+        <p>
+          My Fleet helps authorized finance and fleet teams manage customers, vehicles,
+          loan records, renewals, dues, documents and marketplace activity. This Privacy Policy
+          explains what information the app handles and how it is used.
+        </p>
+
+        <h2>Information we collect</h2>
+        <ul>
+          <li><strong>Account information:</strong> name, email address, login identifier and authentication information.</li>
+          <li><strong>Contact information:</strong> phone number and other contact details entered by an authorized administrator or customer.</li>
+          <li><strong>Finance information:</strong> loan account numbers, lender details, loan amounts, EMI details, interest rates, repayment schedules, vehicle finance records and related documents.</li>
+          <li><strong>Files and photos:</strong> bank PDFs, identity or ownership documents, vehicle photos and other files uploaded through the app.</li>
+          <li><strong>Messages and user content:</strong> marketplace listings, chat messages, notes, attachments and support or follow-up activity.</li>
+          <li><strong>App activity:</strong> records needed to operate the dashboard, assign tasks, process listings and maintain audit history.</li>
+        </ul>
+
+        <h2>How we use information</h2>
+        <ul>
+          <li>Authenticate users and provide role-based access.</li>
+          <li>Manage fleet, customer, loan, EMI, renewal and collection workflows.</li>
+          <li>Read bank PDFs and extract finance fields when a user chooses the PDF-reading feature.</li>
+          <li>Provide marketplace listings, chat, notifications, reports and customer support.</li>
+          <li>Protect the service, prevent misuse and maintain audit records.</li>
+        </ul>
+
+        <h2>Third-party services and sharing</h2>
+        <p>
+          We do not sell personal information. Information is shared only as needed to operate
+          the service with our authorized backend/database hosting providers and service providers.
+          Bank PDFs are read locally in the browser using OCR. Users may also choose to open
+          WhatsApp or another external service from the app; that service then handles information
+          under its own privacy policy.
+        </p>
+
+        <h2>Security</h2>
+        <p>
+          Data is transmitted through HTTPS in the production app. Access is protected with
+          authenticated sessions and role-based permissions. No security method can guarantee
+          absolute security, so users should keep their credentials confidential.
+        </p>
+
+        <h2>Retention and deletion</h2>
+        <p>
+          We retain information while the account or business relationship is active and for as
+          long as needed for legitimate operational, legal or accounting purposes. To request
+          deletion or correction of personal information, email the privacy contact below from
+          the account email and include the name of the organization and the account identifier.
+          We may need to verify the request before taking action.
+        </p>
+
+        <h2>Children</h2>
+        <p>
+          My Fleet is a business finance and fleet-management service and is not directed
+          to children under 13.
+        </p>
+
+        <h2>Changes to this policy</h2>
+        <p>
+          We may update this policy when the app, services or legal requirements change. The
+          updated version will be published on this page with a new effective date.
+        </p>
+
+        <h2>Contact</h2>
+        <p>
+          Privacy requests: <a href="mailto:privacy@aakashfinance.com">privacy@aakashfinance.com</a>
+        </p>
+        <p className="public-policy-footer">My Fleet · Aakash Finance</p>
+      </article>
+    </main>
+  );
+}
+
 function AdminApp({ session, onLogout }) {
   const marketplaceChat = useMarketplaceChat(API_BASE, session.token);
   const [data, setData] = useState(loadData);
@@ -799,6 +886,14 @@ function AdminApp({ session, onLogout }) {
   const [toast, setToast] = useState("");
   const [activeReport, setActiveReport] = useState(reportGroups[0][0]);
   const [selectedClientId, setSelectedClientId] = useState(null);
+  const mutationVersionRef = useRef(0);
+  const pendingMutationCountRef = useRef(0);
+  const mutationQueueRef = useRef(Promise.resolve());
+  const enqueueMutation = (operation) => {
+    const request = mutationQueueRef.current.then(operation);
+    mutationQueueRef.current = request.catch(() => {});
+    return request;
+  };
   const visibleNavItems = useMemo(
     () => session.role === "Caller"
       ? navItems.filter(([key]) => key === "caller")
@@ -872,9 +967,11 @@ function AdminApp({ session, onLogout }) {
     let active = true;
     const refreshFromDatabase = async () => {
       if (document.visibilityState === "hidden") return;
+      if (pendingMutationCountRef.current > 0 || readPendingSync()) return;
+      const refreshVersion = mutationVersionRef.current;
       try {
         const latest = await fetchBackendData(session.token);
-        if (active) {
+        if (active && refreshVersion === mutationVersionRef.current && pendingMutationCountRef.current === 0 && !readPendingSync()) {
           setData(latest);
           setSaveStatus("Database");
         }
@@ -893,22 +990,29 @@ function AdminApp({ session, onLogout }) {
 
   const persist = (nextData, message = "Saved") => {
     const cleanData = deduplicateFinanceRecords(nextData);
+    const mutationVersion = ++mutationVersionRef.current;
+    pendingMutationCountRef.current += 1;
     setData(cleanData);
     savePendingSync(cleanData);
     setLastSavedAt(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
     setSaveStatus("Saving");
     setToast(message);
-    syncDataToBackend(cleanData, session.token)
+    enqueueMutation(() => syncDataToBackend(cleanData, session.token))
       .then((result) => {
-        if (result?.ok) {
+        if (result?.ok && mutationVersion === mutationVersionRef.current) {
           clearPendingSync();
           setSaveStatus("Database");
           setToast("Saved to database");
         }
       })
       .catch((err) => {
-      setSaveStatus("Error");
+        if (mutationVersion === mutationVersionRef.current) setSaveStatus("Error");
+        if (mutationVersion === mutationVersionRef.current) {
         setToast(err.message || "Database sync failed");
+        }
+      })
+      .finally(() => {
+        pendingMutationCountRef.current = Math.max(0, pendingMutationCountRef.current - 1);
       });
   };
 
@@ -1539,61 +1643,51 @@ function AdminApp({ session, onLogout }) {
     if (!file) return;
     try {
       setSaveStatus("Reading");
-      setToast("OpenRouter AI PDF reading...");
-      let aiFields = null;
-      let pdfText = "";
-      try {
-        aiFields = await requestOpenRouterPdfFields(file, session.token);
-        pdfText = aiPdfFieldsToText(aiFields);
-      } catch (openRouterError) {
-        const reason = String(openRouterError?.message || "request failed").replace(/\s+/g, " ").slice(0, 180);
-        setToast(`OpenRouter unavailable: ${reason}. Local OCR fallback reading...`);
-        pdfText = await extractPdfTextWithOcr(file);
-      }
+      setToast("Reading bank document...");
+      const pdfText = await extractPdfTextWithOcr(file);
       if (!pdfText.trim()) throw new Error("The PDF did not contain readable text or finance fields.");
       const client = getDataClient(data, clientId);
       const importedAssets = (data.clientImports ?? [])
         .filter((item) => item.clientId === clientId)
         .flatMap((item) => item.rows ?? []);
-      const parsedPdfRow = parseBankPdfText(pdfText, file.name);
-      const pdfRow = aiFields ? mergeAiPdfFields(aiFields, parsedPdfRow) : parsedPdfRow;
-      const profileAgreement = findProfileAgreementInText(pdfText, importedAssets);
+      const pdfRow = normalizePdfFinanceRow(parseBankPdfText(pdfText, file.name));
+      const profileAgreement = findProfileAgreementInText(pdfText, importedAssets) ||
+        inferProfileAgreementFromPdf(pdfRow, importedAssets);
       if (profileAgreement) pdfRow.loanAccount = profileAgreement;
-      if (!isValidAgreementValue(pdfRow.loanAccount)) {
-        setSaveStatus("Error");
-        setToast("The agreement number could not be read from the PDF.");
-        return;
-      }
 
-      const matchedRow = importedAssets.find((row) => (
+      const isPdfRowMatch = (row) => (
         agreementMatches(row.loanAccount, pdfRow.loanAccount) ||
         (pdfRow.regNo && normalizeRegNo(baseRegNo(row.regNo)) === normalizeRegNo(baseRegNo(pdfRow.regNo)))
-      ));
-      if (!matchedRow) {
-        setSaveStatus("Error");
-        setToast("The PDF agreement number does not match this customer profile.");
-        return;
-      }
-      const pdfMergeRow = sanitizePdfRowForMerge(pdfRow);
-      const mergedRow = {
-        ...matchedRow,
-        ...pdfMergeRow,
-        regNo: pdfRow.regNo || matchedRow?.regNo || "",
-        pdfImportedAt: new Date().toLocaleString("en-IN")
-      };
+      );
+      const matchedRow = importedAssets.find(isPdfRowMatch) || {};
 
       const matchingVehicle = data.vehicles.find((vehicle) => (
         vehicle.clientId === clientId && (
-          agreementMatches(vehicle.loanAccount, mergedRow.loanAccount) ||
-          (mergedRow.regNo && normalizeRegNo(baseRegNo(vehicle.regNo)) === normalizeRegNo(baseRegNo(mergedRow.regNo)))
+          agreementMatches(vehicle.loanAccount, pdfRow.loanAccount) ||
+          (pdfRow.regNo && normalizeRegNo(baseRegNo(vehicle.regNo)) === normalizeRegNo(baseRegNo(pdfRow.regNo)))
         )
       ));
+
+      if (!isValidAgreementValue(pdfRow.loanAccount)) {
+        pdfRow.loanAccount = profileAgreement || matchedRow?.loanAccount || matchingVehicle?.loanAccount || pdfRow.regNo || `AGMT-${Date.now().toString().slice(-6)}`;
+      }
+      const pdfMergeRow = sanitizePdfRowForMerge(pdfRow);
+      // Registration entered by the user takes priority over the bank's text.
+      const savedRegNo = [matchingVehicle?.regNo, matchedRow?.regNo]
+        .find((value) => String(value ?? "").trim() && String(value).trim() !== "-");
+      const defaultRegNo = savedRegNo || pdfRow.regNo || pdfRow.loanAccount || `VEH-${Date.now().toString().slice(-6)}`;
+
+      const mergedRow = {
+        ...mergePdfFinanceAsset(matchedRow, pdfMergeRow),
+        regNo: defaultRegNo,
+        pdfImportedAt: new Date().toLocaleString("en-IN")
+      };
+
       const vehicleId = matchingVehicle?.id || `v-pdf-${Date.now()}`;
       const nextVehicle = matchingVehicle
-        ? mergePdfIntoVehicle(matchingVehicle, mergedRow)
-        : mergedRow.regNo
-          ? excelRowToVehicle(mergedRow, clientId, vehicleId)
-          : null;
+        ? mergePdfIntoVehicle(matchingVehicle, { ...mergedRow, regNo: defaultRegNo })
+        : excelRowToVehicle({ ...mergedRow, regNo: defaultRegNo }, clientId, vehicleId);
+
       const pdfDueTask = nextVehicle
         ? buildPdfEmiDueTask(mergedRow, clientId, nextVehicle.id, nextVehicle.callerId || client?.callerId || "")
         : null;
@@ -1617,22 +1711,29 @@ function AdminApp({ session, onLogout }) {
             if (!isMatch) return row;
             rowUpdated = true;
             return {
-              ...row,
-              ...pdfMergeRow,
-              regNo: row.regNo || pdfRow.regNo,
+              ...mergePdfFinanceAsset(row, pdfMergeRow),
               pdfImportedAt: mergedRow.pdfImportedAt
             };
           })
         };
       });
+
+      if (!rowUpdated) {
+        updatedClientImports.unshift({
+          id: `ci-pdf-${Date.now()}`,
+          clientId,
+          fileName: file.name,
+          importedAt: mergedRow.pdfImportedAt,
+          rows: [{ ...mergedRow, regNo: defaultRegNo }]
+        });
+      }
+
       const updated = {
         ...data,
         clientImports: updatedClientImports,
-        vehicles: nextVehicle
-          ? matchingVehicle
-            ? data.vehicles.map((vehicle) => vehicle.id === nextVehicle.id ? nextVehicle : vehicle)
-            : [nextVehicle, ...data.vehicles]
-          : data.vehicles,
+        vehicles: matchingVehicle
+          ? data.vehicles.map((vehicle) => vehicle.id === nextVehicle.id ? nextVehicle : vehicle)
+          : [nextVehicle, ...data.vehicles],
         dueTasks: updatedDueTasks
       };
       const scheduleMessage = nextVehicle?.emiSchedule?.length
@@ -1726,17 +1827,22 @@ function AdminApp({ session, onLogout }) {
     const label = row.regNo || row.loanAccount || "this vehicle";
     if (!window.confirm(`Delete ${label}?`)) return;
 
+    const targetVehicleId = String(row.vehicleId || row.id || "").trim();
     const targetReg = normalizeRegNo(baseRegNo(row.regNo));
     const targetLoan = normalizeAgreement(row.loanAccount);
     const deletedVehicleIds = new Set(
       data.vehicles
-        .filter((vehicle) => vehicle.clientId === clientId && targetReg && normalizeRegNo(baseRegNo(vehicle.regNo)) === targetReg)
+        .filter((vehicle) => vehicle.clientId === clientId && (
+          (targetVehicleId && vehicle.id === targetVehicleId) ||
+          (targetReg && normalizeRegNo(baseRegNo(vehicle.regNo)) === targetReg)
+        ))
         .map((vehicle) => vehicle.id)
     );
     const updatedVehicles = data.vehicles.filter((vehicle) => {
       const sameClient = vehicle.clientId === clientId;
+      const sameVehicle = targetVehicleId && vehicle.id === targetVehicleId;
       const sameReg = targetReg && normalizeRegNo(baseRegNo(vehicle.regNo)) === targetReg;
-      return !(sameClient && sameReg);
+      return !(sameClient && (sameVehicle || sameReg));
     });
     const updatedImports = (data.clientImports ?? [])
       .map((item) => {
@@ -1784,8 +1890,10 @@ function AdminApp({ session, onLogout }) {
     if (!window.confirm(`Delete ${client.name} and their account?`)) return;
     setSaveStatus("Deleting");
     setToast(`Deleting ${client.name}...`);
+    mutationVersionRef.current += 1;
+    pendingMutationCountRef.current += 1;
     try {
-      const response = await fetch(`${API_BASE}/api/clients/${encodeURIComponent(client.id)}`, { method: "DELETE", headers: authHeaders(session.token) });
+      const response = await enqueueMutation(() => fetch(`${API_BASE}/api/clients/${encodeURIComponent(client.id)}`, { method: "DELETE", headers: authHeaders(session.token) }));
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Delete failed");
       const clientVehicles = data.vehicles.filter((v) => v.clientId === client.id);
@@ -1815,6 +1923,8 @@ function AdminApp({ session, onLogout }) {
     } catch (err) {
       setSaveStatus("Error");
       setToast(err.message || "Delete failed");
+    } finally {
+      pendingMutationCountRef.current = Math.max(0, pendingMutationCountRef.current - 1);
     }
   };
 
@@ -1932,8 +2042,10 @@ function AdminApp({ session, onLogout }) {
   const deleteCallerAccount = async (caller) => {
     if (!window.confirm(`Delete caller ${caller.name}? Their assigned dues will become unassigned.`)) return;
     setSaveStatus("Deleting");
+    mutationVersionRef.current += 1;
+    pendingMutationCountRef.current += 1;
     try {
-      const response = await fetch(`${API_BASE}/api/users/${encodeURIComponent(caller.id)}`, { method: "DELETE", headers: authHeaders(session.token) });
+      const response = await enqueueMutation(() => fetch(`${API_BASE}/api/users/${encodeURIComponent(caller.id)}`, { method: "DELETE", headers: authHeaders(session.token) }));
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Caller could not be deleted.");
       const updated = {
@@ -1948,6 +2060,8 @@ function AdminApp({ session, onLogout }) {
     } catch (error) {
       setSaveStatus("Error");
       setToast(error.message || "Caller could not be deleted.");
+    } finally {
+      pendingMutationCountRef.current = Math.max(0, pendingMutationCountRef.current - 1);
     }
   };
 
@@ -2004,7 +2118,7 @@ function AdminApp({ session, onLogout }) {
             <KuberBrandMark />
           </span>
           <div>
-            <strong>Kuber Finance</strong>
+            <strong>My Fleet</strong>
             <small>Admin web console</small>
           </div>
         </div>
@@ -2443,12 +2557,12 @@ function ClientProfile({ data, clientId, backToClients, importClientExcel, impor
           <div className="excel-import-card pdf-import-card">
             <Icon name="upload" />
             <div>
-              <strong>Upload bank PDF</strong>
-              <span>Agreement Number se matching vehicle finance data update hoga.</span>
+              <strong>Upload bank PDF or image</strong>
+              <span>PDF ya image se EMI schedule read hoga aur Agreement Number se matching vehicle finance data update hoga.</span>
             </div>
             <label className="file-picker">
-              <input type="file" accept=".pdf,application/pdf" onChange={(event) => importClientPdf(event, client.id)} />
-              Choose PDF
+              <input type="file" accept=".pdf,application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => importClientPdf(event, client.id)} />
+              Choose PDF / Image
             </label>
           </div>
         ) : (
@@ -2526,10 +2640,10 @@ function makeVehicleDetail(vehicle, excelAsset, clientName) {
     financeStatus: "-",
     financier: "-",
     loanAccount: "-",
-    loanAmount: String(vehicle.principal),
-    emiAmount: "-",
-    tenure: "-",
-    paidEmi: "-",
+    loanAmount: vehicle.loanAmount ?? "",
+    emiAmount: vehicle.emiAmount ?? "",
+    tenure: vehicle.tenure ?? "",
+    paidEmi: vehicle.paidEmi ?? "",
     emiStart: "-",
     emiEnd: "-",
     closingPrincipal: String(vehicle.principal),
@@ -2548,15 +2662,20 @@ function makeVehicleDetail(vehicle, excelAsset, clientName) {
     remarks: "-"
   };
   const detail = excelAsset ?? fallback;
+  const financeNumber = (key) => {
+    const value = detail[key];
+    return value !== undefined && value !== null && String(value).trim() !== "" && value !== "-"
+      ? value : vehicle[key] ?? 0;
+  };
   const loanFields = {
     loanId: detail.loanId || vehicle.loanId || `LOAN-${String(vehicle.regNo || vehicle.id).replace(/[^A-Z0-9]/gi, "").toUpperCase()}`,
     loanAccount: detail.loanAccount && detail.loanAccount !== "-" ? detail.loanAccount : vehicle.loanAccount || "",
     financier: detail.financier && detail.financier !== "-" ? detail.financier : vehicle.financier || "",
-    loanAmount: detail.loanAmount || vehicle.loanAmount || 0,
-    emiAmount: detail.emiAmount || vehicle.emiAmount || 0,
-    interestRate: detail.interestRate || vehicle.interestRate || 0,
-    tenure: detail.tenure || vehicle.tenure || 0,
-    paidEmi: detail.paidEmi || vehicle.paidEmi || 0,
+    loanAmount: financeNumber("loanAmount"),
+    emiAmount: financeNumber("emiAmount"),
+    interestRate: financeNumber("interestRate"),
+    tenure: financeNumber("tenure"),
+    paidEmi: financeNumber("paidEmi"),
     emiStart: detail.emiStart && detail.emiStart !== "-" ? detail.emiStart : vehicle.emiStart || "",
     emiEnd: detail.emiEnd && detail.emiEnd !== "-" ? detail.emiEnd : vehicle.emiEnd || ""
   };
@@ -2865,6 +2984,7 @@ function VehicleFinanceTable({ vehicles, importedAssets, clientName, onDeleteVeh
     } : null;
     const mainAsset = {
       ...makeVehicleDetail(vehicle, excelAsset, clientName),
+      vehicleId: vehicle.id,
       displaySrNo: String(index + 1),
       isBodyDetail: false,
       bodyDetail
@@ -2879,7 +2999,7 @@ function VehicleFinanceTable({ vehicles, importedAssets, clientName, onDeleteVeh
       <div className="card-head">
         <div>
           <strong>{tableRows.filter((row) => !row.isBodyDetail).length} Vehicles</strong>
-          <span>{firstRow?.owner || clientName}</span>
+          <span>{clientName || firstRow?.owner}</span>
         </div>
         <Badge label="All" />
       </div>
@@ -3944,7 +4064,7 @@ function CustomerPortal({ session, onLogout }) {
             <KuberBrandMark />
           </span>
           <div>
-            <strong>Kuber Finance</strong>
+            <strong>My Fleet</strong>
             <small>Customer portal</small>
           </div>
         </div>
@@ -4250,95 +4370,6 @@ function readFileAsDataUrl(file) {
     reader.onerror = () => reject(reader.error || new Error("File could not be read."));
     reader.readAsDataURL(file);
   });
-}
-
-async function requestOpenRouterPdfFields(file, token) {
-  const dataUrl = await readFileAsDataUrl(file);
-  const separator = dataUrl.indexOf(",");
-  const pdfBase64 = separator >= 0 ? dataUrl.slice(separator + 1) : "";
-  if (!pdfBase64) throw new Error("PDF could not be encoded for OpenRouter AI.");
-  const response = await fetch(`${API_BASE}/api/pdf-ai-extract`, {
-    method: "POST",
-    headers: authHeaders(token, { "Content-Type": "application/json" }),
-    body: JSON.stringify({
-      fileName: file.name,
-      mimeType: file.type || "application/pdf",
-      pdfBase64
-    })
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || result.message || `OpenRouter failed (${response.status}).`);
-  if (!result.fields || typeof result.fields !== "object") throw new Error("OpenRouter returned no finance fields.");
-  return result.fields;
-}
-
-function aiPdfFieldsToText(fields = {}) {
-  const lines = [
-    fields.agreementNumber && `Agreement Number: ${fields.agreementNumber}`,
-    fields.registrationNumber && `Registration Number: ${fields.registrationNumber}`,
-    fields.customerName && `Customer Name: ${fields.customerName}`,
-    fields.financier && `Financier: ${fields.financier}`,
-    fields.manufacturer && `Manufacturer: ${fields.manufacturer}`,
-    fields.model && `Model: ${fields.model}`,
-    fields.loanAmount !== null && fields.loanAmount !== undefined && `Loan Amount: ${fields.loanAmount}`,
-    fields.emiAmount !== null && fields.emiAmount !== undefined && `EMI Amount: ${fields.emiAmount}`,
-    fields.tenureMonths !== null && fields.tenureMonths !== undefined && `Tenure In Months: ${fields.tenureMonths}`,
-    fields.paidEmi !== null && fields.paidEmi !== undefined && `Paid EMI: ${fields.paidEmi}`,
-    fields.interestRate !== null && fields.interestRate !== undefined && `Interest Rate: ${fields.interestRate}`,
-    fields.emiStartDate && `EMI Start Date: ${fields.emiStartDate}`,
-    fields.emiEndDate && `EMI End Date: ${fields.emiEndDate}`,
-    fields.bankClosingPrincipal !== null && fields.bankClosingPrincipal !== undefined && `Closing Principal: ${fields.bankClosingPrincipal}`
-  ].filter(Boolean);
-  const schedule = Array.isArray(fields.emiSchedule) ? fields.emiSchedule : [];
-  if (schedule.length) {
-    lines.push("Repayment Schedule");
-    lines.push("Installment Due Date Opening Principal Principal Interest EMI Amount Closing Principal");
-    schedule.forEach((row) => {
-      lines.push([
-        row.installment,
-        row.dueDate,
-        row.openingPrincipal,
-        row.principal ?? row.principalPaid,
-        row.interest,
-        row.amount ?? row.installmentAmount,
-        row.closingPrincipal
-      ].filter((value) => value !== null && value !== undefined && value !== "").join(" "));
-    });
-  }
-  return normalizePdfText(lines.join("\n"));
-}
-
-function mergeAiPdfFields(fields = {}, fallback = {}) {
-  const valueOrFallback = (value, fallbackValue) => value !== null && value !== undefined && value !== "" ? value : fallbackValue;
-  const aiSchedule = Array.isArray(fields.emiSchedule) ? fields.emiSchedule.map((row, index) => ({
-    installment: Number(row?.installment || index + 1),
-    dueDate: scheduleDateToIso(row?.dueDate) || String(row?.dueDate || ""),
-    amount: Number(row?.amount ?? row?.installmentAmount ?? 0),
-    principal: Number(row?.principal ?? row?.principalPaid ?? 0),
-    interest: Number(row?.interest ?? 0),
-    status: /paid/i.test(String(row?.status || "")) ? "Paid" : "Due"
-  })).filter((row) => row.dueDate && row.amount > 0) : [];
-  return {
-    ...fallback,
-    owner: valueOrFallback(fields.customerName, fallback.owner),
-    financeStatus: fields.agreementNumber ? "FIN" : fallback.financeStatus,
-    loanAccount: valueOrFallback(fields.agreementNumber, fallback.loanAccount),
-    regNo: valueOrFallback(fields.registrationNumber, fallback.regNo),
-    financier: valueOrFallback(fields.financier, fallback.financier),
-    manufacturer: valueOrFallback(fields.manufacturer, fallback.manufacturer),
-    model: valueOrFallback(fields.model, fallback.model),
-    loanAmount: valueOrFallback(fields.loanAmount, fallback.loanAmount),
-    emiAmount: valueOrFallback(fields.emiAmount, fallback.emiAmount),
-    tenure: valueOrFallback(fields.tenureMonths, fallback.tenure),
-    paidEmi: valueOrFallback(fields.paidEmi, fallback.paidEmi),
-    interestRate: valueOrFallback(fields.interestRate, fallback.interestRate),
-    emiStart: valueOrFallback(fields.emiStartDate, fallback.emiStart),
-    emiEnd: valueOrFallback(fields.emiEndDate, fallback.emiEnd),
-    bankClosingPrincipal: valueOrFallback(fields.bankClosingPrincipal, fallback.bankClosingPrincipal),
-    scheduleParsed: aiSchedule.length ? "yes" : fallback.scheduleParsed,
-    emiSchedule: aiSchedule.length ? aiSchedule : (fallback.emiSchedule || []),
-    remarks: "Imported from bank PDF using OpenRouter AI"
-  };
 }
 
 async function readListingPhotos(files) {
@@ -4708,15 +4739,7 @@ function ProofFileIcon() {
 }
 
 function KuberBrandMark() {
-  return (
-    <svg className="kuber-brand-svg" viewBox="0 0 48 48" fill="none" aria-hidden="true" focusable="false">
-      <g transform="translate(3 0)">
-        <path d="M13 9v30" stroke="#F0A500" strokeLinecap="round" strokeWidth="3.2" />
-        <path d="M21 9v30M21 24 36 9M21 24l15 15" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="4.5" />
-        <circle cx="36" cy="9" r="2" fill="#F0A500" />
-      </g>
-    </svg>
-  );
+  return <img className="kuber-brand-svg" src={myFleetLogo} alt="My Fleet" />;
 }
 
 function MarketplaceStoreIcon() {
@@ -5111,6 +5134,8 @@ function buildSmartAlerts(data, includeAll = false) {
 
 function autoClosingPrincipal(row) {
   if (!row) return 0;
+  if (isClosedFinanceRow(row)) return 0;
+  if (row.bankClosingPrincipalUnknown === true) return 0;
   const bankClosing = toNumber(row.bankClosingPrincipal ?? row.bank_closing_principal);
   const savedClosing = toNumber(row.closingPrincipal ?? row.closing_principal);
   const loanAmount = toNumber(row.loanAmount);
@@ -5141,12 +5166,15 @@ function amortizeClosingPrincipal(openingPrincipal, emiAmount, interestRate, pai
 }
 
 function formatAutoClosingPrincipal(row) {
+  if (isClosedFinanceRow(row)) return "0";
   const closing = autoClosingPrincipal(row);
   return closing > 0 ? new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(closing) : "-";
 }
 
 function effectivePaidEmi(row, asOf = new Date()) {
   if (!row) return 0;
+  if (isClosedFinanceRow(row) && toNumber(row.tenure) > 0) return Math.round(toNumber(row.tenure));
+  if (row.paidEmiUnknown === true) return 0;
   const tenure = Math.min(Math.max(Math.round(toNumber(row.tenure)), 0), 360);
   const savedPaid = Math.min(Math.max(Math.round(toNumber(row.paidEmi)), 0), tenure || 360);
   const today = new Date(asOf);
@@ -5189,12 +5217,14 @@ function importedFinanceAssetForVehicle(vehicle, importedAssets = []) {
 
 function customerVehicleClosingPrincipal(vehicle, importedAssets = []) {
   const importedAsset = importedFinanceAssetForVehicle(vehicle, importedAssets);
+  if (importedAsset?.bankClosingPrincipalUnknown === true) return 0;
   const importedClosing = autoClosingPrincipal(importedAsset);
   return importedClosing > 0 ? importedClosing : Number(vehicle.principal || 0);
 }
 
 function customerVehiclePaidEmi(vehicle, importedAssets = []) {
   const importedAsset = importedFinanceAssetForVehicle(vehicle, importedAssets);
+  if (importedAsset?.paidEmiUnknown === true) return 0;
   return effectivePaidEmi(importedAsset) || Math.round(toNumber(vehicle.paidEmi));
 }
 
@@ -5236,16 +5266,60 @@ function isValidAgreementValue(value) {
   return normalized.length >= 6 && /\d/.test(normalized);
 }
 
+function isClosedFinanceRow(row = {}) {
+  return /closed|foreclos|fully\s+paid|settled|no\s+dues|noc\s+issued/i.test([
+    row.loanStatus,
+    row.financeStatus,
+    row.remarks
+  ].filter(Boolean).join(" "));
+}
+
+function normalizePdfFinanceRow(row = {}) {
+  const next = { ...row };
+  const startDate = parseDisplayDate(next.emiStart);
+  const endDate = parseDisplayDate(next.emiEnd);
+  // A bank statement cannot have its maturity date before its first EMI date.
+  // Vision models occasionally swap these two fields, so correct only this
+  // unambiguous ordering error.
+  if (startDate && endDate && endDate < startDate) {
+    const originalStart = next.emiStart;
+    next.emiStart = next.emiEnd;
+    next.emiEnd = originalStart;
+  }
+  const tenure = toNumber(next.tenure);
+  const paidEmi = toNumber(next.paidEmi);
+  const scheduleFullyPaid = next.scheduleParsed === "yes" && tenure > 0 && paidEmi >= tenure && toNumber(next.bankClosingPrincipal) <= 0;
+  if (isClosedFinanceRow(next) || scheduleFullyPaid) {
+    if (toNumber(next.tenure) > 0) next.paidEmi = toNumber(next.tenure);
+    next.financeStatus = "CLOSED";
+    next.bankClosingPrincipal = 0;
+    next.closingPrincipal = 0;
+  }
+  return next;
+}
+
 function sanitizePdfRowForMerge(row) {
   const scheduleParsed = row.scheduleParsed === "yes";
+  const hasValidLoan = (toNumber(row.loanAmount) > 0 || toNumber(row.emiAmount) > 0);
+  const trustedPdfFields = scheduleParsed || row._pdfFieldsTrusted === true || hasValidLoan;
   // EMI amount and dates are safe fallback inputs even when a bank's table layout is not recognized.
   const blockedWithoutSchedule = new Set(["loanAmount", "tenure", "paidEmi", "interestRate", "bankClosingPrincipal"]);
   return Object.fromEntries(Object.entries(row).filter(([key, value]) => {
+    if (key.startsWith("_")) return false;
     if (!value) return false;
     if (Array.isArray(value) && value.length === 0) return false;
-    if (blockedWithoutSchedule.has(key) && !scheduleParsed) return false;
+    if (blockedWithoutSchedule.has(key) && !trustedPdfFields) return false;
     return true;
   }));
+}
+
+function mergePdfFinanceAsset(existing = {}, incoming = {}) {
+  const next = { ...existing, ...incoming };
+  // A finance import updates the loan; keep the user's saved owner and plate.
+  for (const key of ["owner", "regNo"]) {
+    if (String(existing[key] ?? "").trim() && existing[key] !== "-") next[key] = existing[key];
+  }
+  return next;
 }
 
 function formText(form, name) {
@@ -5397,7 +5471,9 @@ function mergePdfIntoVehicle(vehicle, row) {
   textFields.forEach(([target, source]) => {
     if (String(row[source] ?? "").trim()) next[target] = String(row[source]).trim();
   });
-  if (row.regNo) next.regNo = baseRegNo(row.regNo);
+  if ((!String(vehicle.regNo ?? "").trim() || String(vehicle.regNo).trim() === "-") && row.regNo) {
+    next.regNo = baseRegNo(row.regNo);
+  }
   [
     ["loanAmount", "loanAmount"],
     ["emiAmount", "emiAmount"],
@@ -5442,7 +5518,9 @@ function mergePdfIntoVehicle(vehicle, row) {
     next.paidEmi = toNumber(row.paidEmi) || schedule.filter((entry) => entry.status === "Paid").length;
   }
   const calculatedPrincipal = autoClosingPrincipal(row);
-  if (calculatedPrincipal > 0) next.principal = calculatedPrincipal;
+  if (row.bankClosingPrincipalUnknown === true) next.principal = "";
+  else if (isClosedFinanceRow(row) || (row.scheduleParsed === "yes" && toNumber(row.tenure) > 0 && toNumber(row.paidEmi) >= toNumber(row.tenure) && toNumber(row.bankClosingPrincipal) <= 0)) next.principal = 0;
+  else if (calculatedPrincipal > 0) next.principal = calculatedPrincipal;
   if (toNumber(row.loanAmount) > 0) next.loanAmount = toNumber(row.loanAmount);
   if (toNumber(row.bankClosingPrincipal) > 0) next.principal = toNumber(row.bankClosingPrincipal);
   return next;
@@ -5673,104 +5751,127 @@ function formatExcelDate(value) {
   return formatDisplayDate(date.toISOString().slice(0, 10));
 }
 
-async function extractPdfTextWithOcr(file) {
-  // Text PDFs expose their table in a visual order. Joining that output with
-  // the raw PDF stream duplicates columns and makes labels pick unrelated
-  // values (for example "Agreement" or a phone number). Choose one complete
-  // representation instead of merging both representations together.
-  const layoutText = normalizePdfText(await extractPdfJsLayoutText(file));
-  const rawText = normalizePdfText(await extractPdfText(file));
-  const layoutRow = parseBankPdfText(layoutText, file.name);
-  const rawRow = parseBankPdfText(rawText, file.name);
-  const score = (row) => (
-    (isValidAgreementValue(row.loanAccount) ? 5 : 0) +
-    (row.emiSchedule?.length ? 4 : 0) +
-    (toNumber(row.loanAmount) > 0 ? 1 : 0) +
-    (toNumber(row.emiAmount) > 0 ? 1 : 0) +
-    (toNumber(row.tenure) > 0 ? 1 : 0) +
-    (toNumber(row.bankClosingPrincipal) >= 0 && row.bankClosingPrincipal !== "" ? 1 : 0)
-  );
-  // Bajaj's renderer splits digits across adjacent PDF objects. Its raw
-  // stream can be repaired reliably, while the visual layer loses the year
-  // digits, so prefer the repaired raw stream for that format.
-  const sourceName = String(file.name ?? "");
-  const preferRaw = /bajaj/i.test(sourceName);
-  // Indostar places the repayment table and loan summary on different
-  // pages. PDF stream order can mix those sections, while the visual layout
-  // keeps each EMI row intact.
-  const preferLayout = /indostar|tata\s*motors/i.test(sourceName) ||
-    isAshokLeylandScheduleFormat(layoutText) ||
-    isDateFreeRepaymentFormat(layoutText);
-  const useLayout = preferLayout || (!preferRaw && score(layoutRow) >= score(rawRow));
-  const text = useLayout ? layoutText : rawText;
-  const parsed = useLayout ? layoutRow : rawRow;
-  if (text && parsed.loanAccount && (parsed.emiSchedule?.length || hasPdfFinanceValues(parsed))) return text;
+async function ocrImageFile(file) {
+  const worker = await createWorker("eng");
   try {
-    const ocrText = await ocrPdfPages(file);
-    return normalizePdfText(`${ocrText}\n${text}`);
-  } catch {
-    return text;
+    await worker.setParameters({ preserve_interword_spaces: "1", tessedit_pageseg_mode: "6" });
+    const { data: psm6 } = await worker.recognize(file);
+    await worker.setParameters({ tessedit_pageseg_mode: "11" });
+    const { data: psm11 } = await worker.recognize(file);
+    await worker.setParameters({ tessedit_pageseg_mode: "4" });
+    const { data: psm4 } = await worker.recognize(file);
+    return normalizePdfText([psm6.text, psm11.text, psm4.text].join("\n"));
+  } finally {
+    await worker.terminate();
   }
 }
 
-function hasPdfFinanceValues(row) {
-  return toNumber(row.emiAmount) > 0 &&
-    toNumber(row.tenure) > 0 &&
-    String(row.paidEmi ?? "").trim() !== "" &&
-    toNumber(row.bankClosingPrincipal) > 0;
-}
-
-async function extractPdfText(file) {
-  const buffer = await file.arrayBuffer();
-  const raw = new TextDecoder("latin1").decode(buffer);
-  const compressedText = await extractCompressedPdfText(raw);
-  const literalText = extractPdfOperatorText(`${compressedText} ${raw}`);
-  const hexText = [...`${compressedText} ${raw}`.matchAll(/<([0-9a-fA-F\s]{6,})>/g)]
-    .map((match) => decodePdfHex(match[1]))
-    .join(" ");
-  const extractedText = normalizePdfText(`${compressedText} ${literalText} ${hexText}`);
-  return extractedText || normalizePdfText(raw);
-}
-
-async function extractPdfJsLayoutText(file) {
+async function extractPdfTextWithOcr(file) {
+  if (file.type?.startsWith("image/") || /\.(png|jpe?g|webp|bmp|tiff)$/i.test(file.name)) {
+    return ocrImageFile(file);
+  }
+  let pdfDocument;
   try {
     const buffer = await file.arrayBuffer();
-    const pdfDocument = await pdfjsLib.getDocument({ data: buffer }).promise;
-    const lines = [];
-    const pageCount = pdfDocument.numPages;
-    for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
-      const page = await pdfDocument.getPage(pageNumber);
-      const content = await page.getTextContent();
-      const items = content.items
-        .map((item) => ({
-          text: String(item.str ?? "").trim(),
-          x: item.transform?.[4] ?? 0,
-          y: item.transform?.[5] ?? 0
-        }))
-        .filter((item) => item.text);
-      const rows = [];
-      items.sort((a, b) => b.y - a.y || a.x - b.x).forEach((item) => {
-        const row = rows.find((entry) => Math.abs(entry.y - item.y) < 4);
-        if (row) {
-          row.items.push(item);
-          row.y = (row.y + item.y) / 2;
-        } else {
-          rows.push({ y: item.y, items: [item] });
-        }
-      });
-      rows.forEach((row) => {
-        lines.push(row.items.sort((a, b) => a.x - b.x).map((item) => item.text).join(" "));
-      });
-    }
-    return lines.join("\n");
+    pdfDocument = await pdfjsLib.getDocument({ data: buffer }).promise;
   } catch {
-    return "";
+    return ocrImageFile(file);
   }
+  // Step 1: Try native pdfjs text extraction first (works great for digital PDFs)
+  const nativeText = await extractPdfNativeText(pdfDocument);
+  const nativeNormalized = normalizePdfText(nativeText);
+  // If native text contains enough finance-relevant content, use it directly.
+  // Digital PDFs (like Cholamandalam) have embedded text that pdfjs extracts perfectly.
+  const hasFinanceContent = /(?:agreement|loan|emi|installment|instalment|instl|repayment|principal|interest|outstanding|tenure|schedule|amortization)/i.test(nativeNormalized);
+  const hasScheduleRows = /\b\d{1,3}\s+\d{1,2}[.\/-](?:\d{1,2}|[A-Za-z]{3,})[.\/-]\d{2,4}/m.test(nativeNormalized);
+  const hasEnoughText = nativeNormalized.length > 200;
+  const needsOcrSupplement = shouldSupplementPdfOcr(file.name, nativeNormalized);
+  if (hasFinanceContent && hasEnoughText) {
+    // Native text is usually more accurate, but TVS/scanned repayment layouts
+    // need OCR as an extra source because their visible table can differ from
+    // the PDF text layer.
+    if (hasScheduleRows && !needsOcrSupplement) return nativeNormalized;
+    try {
+      const ocrText = await ocrPdfPages(pdfDocument);
+      return normalizePdfText(nativeNormalized + "\n" + ocrText);
+    } catch {
+      return nativeNormalized;
+    }
+  }
+  // Step 2: Fall back to OCR for scanned/image-based PDFs
+  const ocrText = await ocrPdfPages(pdfDocument);
+  // Combine native + OCR in case native had partial text
+  const combined = nativeNormalized ? normalizePdfText(nativeNormalized + "\n" + ocrText) : normalizePdfText(ocrText);
+  return combined;
 }
 
-async function ocrPdfPages(file) {
-  const buffer = await file.arrayBuffer();
-  const pdfDocument = await pdfjsLib.getDocument({ data: buffer }).promise;
+function shouldSupplementPdfOcr(fileName, text) {
+  const sourceName = String(fileName ?? "").toLowerCase();
+  const source = String(text ?? "");
+  return sourceName.includes("tvc") ||
+    /TVS\s*CREDIT/i.test(source) ||
+    (/Repayment\s+Schedule/i.test(source) && /Balance\s+Princip(?:al|le)/i.test(source) && /Monthly\s+Due/i.test(source));
+}
+
+async function extractPdfNativeText(pdfDocument) {
+  const pageCount = pdfDocument.numPages;
+  const pageTexts = [];
+  for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+    const page = await pdfDocument.getPage(pageNumber);
+    const textContent = await page.getTextContent();
+
+    // Deduplicate overlapping items (same text string at identical x, y coordinates)
+    const uniqueItems = [];
+    for (const item of textContent.items) {
+      if (!item.str) continue;
+      const x = item.transform[4];
+      const y = item.transform[5];
+      const text = item.str.trim();
+      if (!text) continue;
+
+      const isDuplicate = uniqueItems.some(
+        (existing) =>
+          Math.abs(existing.y - y) <= 1.5 &&
+          Math.abs(existing.x - x) <= 2.5 &&
+          existing.text.trim() === text
+      );
+
+      if (!isDuplicate) {
+        uniqueItems.push({ x, y, text: item.str, width: item.width });
+      }
+    }
+
+    // Group text items by their y-position to reconstruct lines (within 3.5px tolerance)
+    const linesBucket = [];
+    for (const item of uniqueItems) {
+      let bucket = linesBucket.find((b) => Math.abs(b.y - item.y) <= 3.5);
+      if (!bucket) {
+        bucket = { y: item.y, items: [] };
+        linesBucket.push(bucket);
+      }
+      bucket.items.push(item);
+    }
+    // Sort lines top-to-bottom (higher y = higher on page in PDF coords)
+    linesBucket.sort((a, b) => b.y - a.y);
+    const lines = linesBucket.map((bucket) => {
+      const items = bucket.items.sort((a, b) => a.x - b.x);
+      // Insert spaces between items that are far apart
+      let line = "";
+      for (let i = 0; i < items.length; i++) {
+        if (i > 0) {
+          const gap = items[i].x - (items[i - 1].x + (items[i - 1].width || 0));
+          line += gap > 5 ? "  " : gap > 1 ? " " : "";
+        }
+        line += items[i].text;
+      }
+      return line.trim();
+    }).filter(Boolean);
+    pageTexts.push(lines.join("\n"));
+  }
+  return pageTexts.join("\n");
+}
+
+async function ocrPdfPages(pdfDocument) {
   const worker = await createWorker("eng");
   await worker.setParameters({
     preserve_interword_spaces: "1",
@@ -5790,16 +5891,24 @@ async function ocrPdfPages(file) {
       context.fillRect(0, 0, canvas.width, canvas.height);
       await page.render({ canvasContext: context, viewport }).promise;
       const cleanCanvas = cloneCanvas(canvas);
-      sharpenCanvasForOcr(canvas);
+      const sharpenedCanvas = cloneCanvas(canvas);
+      sharpenCanvasForOcr(sharpenedCanvas);
       await worker.setParameters({ tessedit_pageseg_mode: "6" });
-      const { data } = await worker.recognize(canvas);
+      const { data } = await worker.recognize(cleanCanvas);
       await worker.setParameters({ tessedit_pageseg_mode: "11" });
       const { data: sparseData } = await worker.recognize(cleanCanvas);
       // PSM 4 is better for scanned repayment tables with fixed columns;
       // PSM 6/11 remain useful for the document summary and labels.
       await worker.setParameters({ tessedit_pageseg_mode: "4" });
-      const { data: columnData } = await worker.recognize(cleanCanvas);
-      texts.push(data.text, sparseData.text, columnData.text);
+      const { data: columnData } = await worker.recognize(sharpenedCanvas);
+      // TVS repayment tables use fine grid lines; a second table-oriented
+      // pass recovers rows that PSM 6/11 often merges into the borders.
+      await worker.setParameters({
+        tessedit_pageseg_mode: "6",
+        tessedit_char_whitelist: "0123456789/-.,%ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+      });
+      const { data: numericTableData } = await worker.recognize(sharpenedCanvas);
+      texts.push(data.text, sparseData.text, columnData.text, numericTableData.text);
     }
   } finally {
     await worker.terminate();
@@ -5828,48 +5937,6 @@ function sharpenCanvasForOcr(canvas) {
   context.putImageData(image, 0, 0);
 }
 
-async function extractCompressedPdfText(raw) {
-  if (typeof DecompressionStream === "undefined") return "";
-  const streams = [...raw.matchAll(/\/FlateDecode[\s\S]{0,900}?stream\r?\n?([\s\S]*?)\r?\n?endstream/g)];
-  const decoded = await Promise.all(streams.map(async (match) => {
-    try {
-      const bytes = Uint8Array.from(match[1], (char) => char.charCodeAt(0) & 255);
-      const inflated = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"))).arrayBuffer();
-      return new TextDecoder("latin1").decode(inflated);
-    } catch {
-      return "";
-    }
-  }));
-  return decoded.join(" ");
-}
-
-function extractPdfOperatorText(raw) {
-  return [...raw.matchAll(/\((?:\\.|[^\\)])*\)/g)]
-    .map((match) => decodePdfLiteral(match[0].slice(1, -1)))
-    .join(" ");
-}
-
-function decodePdfLiteral(value) {
-  return value
-    .replace(/\\n/g, " ")
-    .replace(/\\r/g, " ")
-    .replace(/\\t/g, " ")
-    .replace(/\\([()\\])/g, "$1")
-    .replace(/\\\d{1,3}/g, " ");
-}
-
-function decodePdfHex(value) {
-  const clean = value.replace(/\s+/g, "");
-  const bytes = clean.match(/.{1,2}/g)?.map((part) => parseInt(part, 16)).filter((byte) => Number.isFinite(byte)) ?? [];
-  if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
-    return String.fromCharCode(...bytes.slice(2).reduce((chars, byte, index, source) => {
-      if (index % 2 === 0) chars.push((byte << 8) + (source[index + 1] ?? 0));
-      return chars;
-    }, []));
-  }
-  return String.fromCharCode(...bytes);
-}
-
 function normalizePdfText(value) {
   return String(value ?? "")
     .replace(/[ \t]+/g, " ")
@@ -5878,44 +5945,372 @@ function normalizePdfText(value) {
     .trim();
 }
 
+function formatOcrDate(rawDate) {
+  let cleaned = String(rawDate ?? "")
+    .replace(/\s*([./-])\s*/g, "$1")
+    .trim();
+  const matchNoDash = cleaned.match(/^(\d{1,2})[./-]?(\d{1,2})[./-]?(\d{4})$/);
+  if (matchNoDash) {
+    const day = matchNoDash[1].padStart(2, "0");
+    const month = matchNoDash[2].padStart(2, "0");
+    const year = matchNoDash[3];
+    return `${day}-${month}-${year}`;
+  }
+  return cleaned;
+}
+
+function findTataSummaryValues(text) {
+  const source = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (!/TATA\s+MOTORS|TATA\s+CAPITAL|TATA|AMORTIZATION\s+TABLE/i.test(source) && !/Contract\s+No/i.test(source)) return {};
+
+  const amountAfter = (pattern) => {
+    const match = source.match(new RegExp(`${pattern}\\s*(?:\\([^)]*\\))?\\s*[:\\-]?\\s*(?:INR|RS\\.?|₹)?\\s*([\\d,]+(?:\\.\\d{1,2})?)`, "i"));
+    return match?.[1]?.replace(/,/g, "") ?? "";
+  };
+  const numberAfter = (pattern) => {
+    const match = source.match(new RegExp(`${pattern}\\s*(?:\\([^)]*\\))?\\s*[:\\-]?\\s*(\\d{1,4})`, "i"));
+    return match?.[1] ?? "";
+  };
+  const dateAfter = (pattern) => {
+    const match = source.match(new RegExp(`${pattern}\\s*(?:\\([^)]*\\))?\\s*[:\\-]?\\s*(\\d{1,2}[./-]\\d{1,2}[./-]\\d{2,4})`, "i"));
+    return match?.[1] ?? "";
+  };
+
+  const customerMatch = source.match(/(?:Customer|Client|Client\s+Name)\s*[:\-]?\s*([A-Za-z][A-Za-z .'-]{2,60}?)(?=\s+Contract|\s+c\/o|\s+Vehicle|\s+Finance|\s+Rate|$)/i);
+  const regMatch = source.match(/(?:Vehicle\s+No\.?|Registration\s+No\.?)\s*[:\-]?\s*([A-Z]{2}\s*\d{1,2}\s*[A-Z]{1,3}\s*[- ]?\s*\d{3,4})/i);
+  const contractMatch = source.match(/(?:Contract\s+No\.?|Agreement\s+No\.?)\s*[:\-]?\s*([A-Z0-9]{6,25})/i);
+  const rateMatch = source.match(/(?:Rate\s*\([^)]*\)|IRR|Rate\s+of\s+Interest)[^0-9]{0,20}([0-9]{1,2}\.[0-9]{1,5})/i);
+
+  const rawClosing = amountAfter("(?:Closing\\s+Principal|Principal\\s+Outstanding|Outstanding\\s+Principal|O\\/S\\s+Principal|Balance\\s+Outstanding)");
+  const customerName = (customerMatch?.[1] ?? "").replace(/\s+(?:Contract|Agreement|Vehicle|Finance|Rate|Tenure|EMI)\b.*$/i, "").trim();
+
+  return {
+    owner: cleanPdfPersonName(customerName),
+    loanAccount: contractMatch?.[1] ?? "",
+    regNo: regMatch?.[1]?.replace(/\s+/g, " ").trim().toUpperCase() ?? "",
+    loanAmount: amountAfter("(?:Finance\\s+Amount|Finance\\s+Amt|Amount\\s+Financed|Loan\\s+Amount)"),
+    emiAmount: amountAfter("(?:EMI\\s+Amount|EMI\\s+Amt|Instl\\.?\\s*Amount)"),
+    tenure: numberAfter("(?:Tenure\\s*\\/\\s*EMIs?|Tenure|No\\.?\\s*of\\s*Instls?\\.?|No\\.?\\s*of\\s*Installments?|No\\.?\\s*of\\s*EMIs)"),
+    interestRate: rateMatch?.[1] ?? findPdfRate(source),
+    emiStart: dateAfter("(?:First\\s+Instl\\s+Date|First\\s+Installment\\s+Date|Contract\\s+Date)"),
+    emiEnd: dateAfter("(?:Maturity\\s+Date|Last\\s+Instalment\\s+date)"),
+    bankClosingPrincipal: toNumber(rawClosing) > 0 ? rawClosing : ""
+  };
+}
+
+function findAuSmallFinanceSummaryValues(text) {
+  const source = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (!/AU\s+SMALL\s+FINANCE|AU\s+BANK/i.test(source)) return {};
+
+  const amountAfter = (label) => source.match(new RegExp(`${label}\\s*[:\\-]?\\s*(?:INR|RS\\.?|₹)?\\s*([\\d,]+(?:\\.\\d{1,2})?)`, "i"))?.[1]?.replace(/,/g, "") ?? "";
+  const periodMatch = source.match(/EMI\s+Period\s*[:\-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\s*(?:to|[-–])\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})/i);
+  const tenureMatch = source.match(/Tenure\s*(?:\/\s*EMIs?)?\s*[:\-]?\s*(\d{1,4})\s*(?:months?|EMIs?)?/i);
+  const ownerMatch = source.match(/Customer\s*[:\-]?\s*([A-Za-z][A-Za-z .'-]{1,60}?)(?=\s+Loan\s+Account|\s+Loan\s+Amount|$)/i);
+  const registrationMatch = source.match(/Vehicle\s+No\.?\s*[:\-]?\s*([A-Z0-9][A-Z0-9 -]{4,20}?)(?=\s+Tenure|\s+EMI|$)/i);
+
+  return {
+    owner: ownerMatch?.[1]?.trim() ?? "",
+    regNo: registrationMatch?.[1]?.replace(/\s+/g, " ").trim().toUpperCase() ?? "",
+    loanAmount: amountAfter("Loan\\s+Amount"),
+    interestRate: source.match(/Rate\s+of\s+Interest\s*[:\-]?\s*([\d]+(?:\.\d{1,2})?)/i)?.[1] ?? "",
+    tenure: tenureMatch?.[1] ?? "",
+    emiAmount: amountAfter("EMI\\s+Amount"),
+    emiStart: periodMatch?.[1] ?? "",
+    emiEnd: periodMatch?.[2] ?? ""
+  };
+}
+
+function parseAuScheduleRows(text) {
+  const rawText = String(text ?? "");
+  const normalized = rawText.replace(/\s+/g, " ");
+  if (!/AU\s+SMALL\s+FINANCE|AU\s+BANK/i.test(normalized)) return [];
+
+  const parseLineValues = (installment, dueDate, valueText) => {
+    const values = extractSignedMoneyLikeNumbers(valueText);
+    if (values.length < 4) return null;
+    const installmentAmount = values[0];
+    const principalPaid = values[1];
+    const interest = values[2];
+    const closingPrincipal = values[3];
+    const openingPrincipal = String(toNumber(closingPrincipal) + toNumber(principalPaid));
+    return makeScheduleRow({
+      installment,
+      dueDate,
+      openingPrincipal,
+      installmentAmount,
+      principalPaid,
+      interest,
+      closingPrincipal,
+      rate: deriveAnnualRate(interest, openingPrincipal)
+    });
+  };
+
+  const lineRows = rawText
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .map((line) => {
+      const match = line.match(/^(\d{1,3})\s+(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\s+(.+)$/);
+      if (!match) return null;
+      return parseLineValues(match[1], match[2], match[3]);
+    })
+    .filter(Boolean);
+
+  if (lineRows.length > 0) return lineRows;
+
+  const rowStartPattern = /(?:^|\s)(\d{1,3})\s+(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})(?=\s)/g;
+  const starts = [...normalized.matchAll(rowStartPattern)];
+  return starts.map((match, index) => {
+    const rowStart = match.index + match[0].length;
+    const rowEnd = starts[index + 1]?.index ?? normalized.length;
+    return parseLineValues(match[1], match[2], normalized.slice(rowStart, rowEnd));
+  }).filter(Boolean);
+}
+
+function findCholaSummaryValues(text) {
+  const source = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (!/CHOLAMANDALAM/i.test(source)) return {};
+
+  const amountAfter = (pattern) => {
+    const match = source.match(new RegExp(`${pattern}\\s*(?:\\([^)]*\\))?\\s*[:\\-]?\\s*(?:INR|RS\\.?|₹)?\\s*([\\d,]+(?:\\.\\d{1,2})?)`, "i"));
+    return match?.[1]?.replace(/,/g, "") ?? "";
+  };
+  const numberAfter = (pattern) => {
+    const match = source.match(new RegExp(`${pattern}\\s*(?:\\([^)]*\\))?\\s*[:\\-]?\\s*(\\d{1,4})`, "i"));
+    return match?.[1] ?? "";
+  };
+  const dateAfter = (pattern) => {
+    const match = source.match(new RegExp(`${pattern}\\s*(?:\\([^)]*\\))?\\s*[:\\-]?\\s*(\\d{1,2}[./-]\\d{1,2}[./-]\\d{2,4}|\\d{4}-\\d{1,2}-\\d{1,2}|\\d{1,2}[-\\s][A-Za-z]{3,}[-\\s]\\d{2,4})`, "i"));
+    return match?.[1] ?? "";
+  };
+
+  const rateMatch = source.match(/(?:Internal\s+Rate\s+of\s*Return|IRR|Interest\s+Rate)[^0-9]{0,40}([0-9]{1,2}\.[0-9]{1,5})/i);
+
+  const rawClosing = amountAfter("(?:Closing\\s+Principal|Principal\\s+Outstanding|Outstanding\\s+Principal|Balance\\s+Outstanding|Current\\s+POS)");
+
+  const values = {
+    loanAmount: amountAfter("(?:Amount\\s+Financed|Loan\\s+Amount|Asset\\s+Cost|Net\\s+Disbursement|Loan\\s+Sanctioned\\s+Amount|Finance\\s+Amount)"),
+    emiAmount: amountAfter("(?:EMI\\s+Amount|EMI\\s+Amt|Instl\\.?\\s*Amt|Instl\\.?\\s*Amount|Installment\\s+Amount|Instalment\\s+Amount|Monthly\\s+Installment|Monthly\\s+Instalment)"),
+    tenure: numberAfter("(?:Tenure|No\\.?\\s*of\\s*Instls?\\.?|No\\.?\\s*of\\s*Installments?|No\\.?\\s*of\\s*Instalments?|Repayable\\s+in\\s+Instalments?|Repayable\\s+in\\s+Installments?)"),
+    interestRate: rateMatch ? rateMatch[1] : findPdfRate(source),
+    emiStart: dateAfter("(?:First\\s+Insta?l?ment\\s+date|First\\s+Insta?l?ment\\s+Date|First\\s+EMI\\s+Date|EMI\\s+Start\\s+Date|Loan\\s+Authorization\\s+Date)"),
+    emiEnd: dateAfter("(?:Last\\s+Insta?l?ment\\s+date|Last\\s+Insta?l?ment\\s+Date|Maturity\\s+Date|Last\\s+EMI\\s+Date)"),
+    bankClosingPrincipal: toNumber(rawClosing) >= 1000 ? rawClosing : ""
+  };
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value));
+}
+
+function isCholaScheduleFormat(text) {
+  const normalized = String(text ?? "").replace(/\s+/g, " ");
+  return /CHOLAMANDALAM/i.test(normalized) &&
+    (/(?:Repayment\s+Schedule|Amortization|EMI\s+Schedule|Instl\.?\s*No)/i.test(normalized)) &&
+    (/\b(?:Opening\s+Principal|Principal|Interest|Closing\s+Principal|Outstanding)\b/i.test(normalized));
+}
+
+function parseCholaScheduleRows(text) {
+  const rawText = String(text ?? "");
+  const normalized = rawText.replace(/\s+/g, " ");
+  if (!isCholaScheduleFormat(rawText) && !/CHOLAMANDALAM/i.test(normalized)) return [];
+  // Cholamandalam repayment schedule columns:
+  // Instl No | Due Date | Opening Principal | EMI Amount | Principal | Interest | Closing Principal
+  // Some PDFs also have extra columns like Insurance/Service Tax.
+
+  // Try line-by-line parsing first
+  const lineRows = rawText
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .map((line) => {
+      const match = line.match(/^(\d{1,3})\s+(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}[-\s][A-Za-z]{3,}[-\s]\d{2,4})\s+(.+)$/);
+      if (!match) return null;
+      return parseCholaScheduleValues(match[1], match[2], match[3]);
+    })
+    .filter(Boolean);
+  if (lineRows.length > 0) return lineRows;
+
+  // Try flattened/segment parsing
+  const rowStartPattern = /(?:^|\s)(\d{1,3})\s+(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}[-\s][A-Za-z]{3,}[-\s]\d{2,4})(?=\s)/g;
+  const starts = [...normalized.matchAll(rowStartPattern)];
+  const segmentRows = starts.map((match, index) => {
+    const rowStart = match.index + match[0].length;
+    const rowEnd = starts[index + 1]?.index ?? normalized.length;
+    return parseCholaScheduleValues(match[1], match[2], normalized.slice(rowStart, rowEnd));
+  }).filter(Boolean);
+  return segmentRows;
+}
+
+function parseCholaScheduleValues(installment, dueDate, valueText) {
+  const values = extractSignedMoneyLikeNumbers(valueText);
+  if (values.length < 4) return null;
+
+  // Try multiple column arrangements that Cholamandalam uses:
+  // Format 1: Opening Principal | EMI Amount | Principal | Interest | Closing Principal
+  // Format 2: EMI Amount | Principal | Interest | Closing Principal
+  // Format 3: Opening Principal | EMI Amount | Principal | Interest | Service Tax/Insurance | Closing Principal
+
+  if (values.length >= 5) {
+    // Check if first value is Opening Principal (should be large, > EMI)
+    const firstVal = toNumber(values[0]);
+    const secondVal = toNumber(values[1]);
+    if (firstVal > secondVal && firstVal > 1000) {
+      // Format 1 or 3: Opening Principal is first
+      const openingPrincipal = values[0];
+      const installmentAmount = values[1];
+      const principalPaid = values[2];
+      const interest = values[3];
+      const closingPrincipal = values.length >= 6 ? values[values.length - 1] : values[4];
+      const serviceTax = values.length >= 6 ? values[4] : "";
+      // Validate: principal + interest should approximately equal EMI
+      const emiBreakup = toNumber(principalPaid) + toNumber(interest);
+      const emiAmt = toNumber(installmentAmount);
+      const diff = Math.abs(emiAmt - emiBreakup);
+      if (emiAmt > 0 && diff <= Math.max(emiAmt * 0.15, 50)) {
+        return makeScheduleRow({
+          installment,
+          dueDate,
+          openingPrincipal,
+          installmentAmount,
+          principalPaid,
+          interest,
+          serviceTax,
+          closingPrincipal,
+          rate: deriveAnnualRate(interest, openingPrincipal)
+        });
+      }
+    }
+  }
+
+  // Format 2: EMI Amount | Principal | Interest | Closing Principal (no opening principal)
+  if (values.length >= 4) {
+    const installmentAmount = values[0];
+    const principalPaid = values[1];
+    const interest = values[2];
+    const closingPrincipal = values[values.length >= 5 ? 4 : 3];
+    const serviceTax = values.length >= 5 ? values[3] : "";
+    const openingPrincipal = String(toNumber(closingPrincipal) + toNumber(principalPaid));
+    const emiBreakup = toNumber(principalPaid) + toNumber(interest);
+    const emiAmt = toNumber(installmentAmount);
+    const diff = Math.abs(emiAmt - emiBreakup);
+    if (emiAmt >= 100 && toNumber(principalPaid) > 0 && toNumber(interest) > 0 && diff <= Math.max(emiAmt * 0.15, 50)) {
+      return makeScheduleRow({
+        installment,
+        dueDate,
+        openingPrincipal,
+        installmentAmount,
+        principalPaid,
+        interest,
+        serviceTax,
+        closingPrincipal,
+        rate: deriveAnnualRate(interest, openingPrincipal)
+      });
+    }
+  }
+
+  // Fallback: try the last 4 values as EMI | Principal | Interest | Closing
+  if (values.length >= 4) {
+    const slice = values.slice(-4);
+    const installmentAmount = slice[0];
+    const principalPaid = slice[1];
+    const interest = slice[2];
+    const closingPrincipal = slice[3];
+    const openingPrincipal = String(toNumber(closingPrincipal) + toNumber(principalPaid));
+    if (toNumber(installmentAmount) >= 100 && toNumber(principalPaid) > 0 && toNumber(interest) > 0 && toNumber(closingPrincipal) >= 0) {
+      return makeScheduleRow({
+        installment,
+        dueDate,
+        openingPrincipal,
+        installmentAmount,
+        principalPaid,
+        interest,
+        closingPrincipal,
+        rate: deriveAnnualRate(interest, openingPrincipal)
+      });
+    }
+  }
+  return null;
+}
+
 function parseBankPdfText(text, fileName = "") {
   const agreement = findPdfAgreement(text) || findAgreementFallback(text);
   const regNo = findPdfRegistration(text);
+  const indostarSummaryValues = findIndostarSummaryValues(text);
+  const tvsSummaryValues = findTvsCreditSummaryValues(text);
+  const auSummaryValues = findAuSmallFinanceSummaryValues(text);
+  const tataSummaryValues = findTataSummaryValues(text);
+  const cholaSummaryValues = findCholaSummaryValues(text);
+  const auRows = parseAuScheduleRows(text);
   const scheduleValues = findScheduleTableValues(text);
+  const tataScheduleDetected = scheduleValues.scheduleParsed === "yes" && /TATA\s+MOTORS|TATA\s+CAPITAL/i.test(String(text ?? ""));
   const ashokLeylandSummaryValues = Object.keys(scheduleValues).length > 0 ? {} : findAshokLeylandSummaryValues(text);
-  const tableValues = Object.keys(scheduleValues).length > 0 ? scheduleValues :
+  const tableValues = auRows.length > 0 ? summarizeScheduleRows(auRows, text) :
+    Object.keys(scheduleValues).length > 0 ? scheduleValues :
     Object.keys(ashokLeylandSummaryValues).length > 0 ? ashokLeylandSummaryValues :
       findFinanceTableValues(text);
-  const exactLoanAmount = findPdfExactAmount(text, ["Amount Financed", "Loan Amount", "Financed Amount", "Total Loan Sanctioned", "Total Loan Disbursed"]);
+  // This scanned layout often loses its shaded headers. Its validated rows
+  // are more reliable than loose label matches (which can read a date as ROI).
+  const poonawallaValues = isPoonawallaScheduleFormat(text) && scheduleValues.scheduleParsed === "yes"
+    ? scheduleValues : {};
+
+  const exactLoanAmount = findPdfExactAmount(text, ["Amount Financed", "Loan Amount", "Financed Amount", "Total Loan Sanctioned", "Total Loan Disbursed", "Asset Cost", "Net Disbursement", "Sanctioned Amount", "Finance Amount"]);
+  const explicitLoanAmount = findPdfAmount(text, ["Amount Financed", "Loan Amount", "Financed Amount", "Total Loan Sanctioned", "Total Loan Disbursed", "Asset Cost", "Net Disbursement", "Sanctioned Amount", "Finance Amount"], { positive: true, min: 1000 });
+  const explicitEmiAmount = findPdfAmount(text, ["EMI Amount", "Installment Amount", "Instalment Amount", "Monthly Installment", "Monthly Instalment", "Repayment Amount", "EMI", "Instl Amt", "Instl Amount"], { positive: true, min: 100 });
+  const explicitClosingPrincipal = findPdfAmount(text, ["Closing Principal", "Principal Outstanding", "Outstanding Principal", "Current POS", "POS", "Foreclosure Amount", "Foreclosure Value", "Closure Amount", "Amount to be paid", "Payable Amount", "Balance Outstanding"], { positive: true, min: 1000 });
+
   const indostarEmiAmount = isIndostarScheduleFormat(text) ? findIndostarEmiAmount(text) : "";
   const preferScheduleAmounts = scheduleValues.scheduleParsed === "yes" &&
     (isInstlOutstandingScheduleFormat(text) || isDateFreeRepaymentFormat(text));
+
+  const finalLoanAmount = tvsSummaryValues.loanAmount || indostarSummaryValues.loanAmount || auSummaryValues.loanAmount || cholaSummaryValues.loanAmount || tataSummaryValues.loanAmount || (preferScheduleAmounts ? tableValues.loanAmount : explicitLoanAmount || exactLoanAmount || tableValues.loanAmount);
+  const finalEmiAmount = tvsSummaryValues.emiAmount || indostarSummaryValues.emiAmount || auSummaryValues.emiAmount || cholaSummaryValues.emiAmount || tataSummaryValues.emiAmount || explicitEmiAmount || tableValues.emiAmount || indostarEmiAmount;
+  const finalClosingPrincipal = scheduleValues.scheduleParsed === "yes"
+    ? tableValues.bankClosingPrincipal
+    : (cholaSummaryValues.bankClosingPrincipal || tataSummaryValues.bankClosingPrincipal || (auRows.length > 0 ? tableValues.bankClosingPrincipal : (explicitClosingPrincipal || tableValues.bankClosingPrincipal)));
+
+  const tataFieldsTrusted = Boolean(
+    tataSummaryValues.loanAmount &&
+    (tataSummaryValues.emiAmount || scheduleValues.emiAmount) &&
+    (tataSummaryValues.tenure || scheduleValues.tenure)
+  );
+  const cholaFieldsTrusted = Boolean(
+    cholaSummaryValues.loanAmount &&
+    (cholaSummaryValues.emiAmount || scheduleValues.emiAmount) &&
+    (cholaSummaryValues.tenure || scheduleValues.tenure)
+  );
+  const anyFieldsTrusted = Boolean(finalLoanAmount || finalEmiAmount || scheduleValues.scheduleParsed === "yes");
+
+  const loanStatus = findPdfValue(text, ["Loan Status", "Account Status", "Contract Status", "Status"]);
+
   return {
-    owner: findPdfOwner(text),
-    financeStatus: agreement ? "FIN" : "",
-    loanAccount: agreement,
-    regNo,
+    owner: tataSummaryValues.owner || findPoonawallaOwner(text) || indostarSummaryValues.owner || tvsSummaryValues.owner || auSummaryValues.owner || findPdfOwner(text),
+    financeStatus: agreement ? /closed|foreclos|fully\s+paid|settled|no\s+dues/i.test(loanStatus) ? "CLOSED" : "FIN" : "",
+    loanAccount: indostarSummaryValues.agreementNumber || tvsSummaryValues.loanAccount || (/^(?:transfer|agreement|number|no)$/i.test(agreement) ? "" : agreement),
+    regNo: indostarSummaryValues.regNo || tvsSummaryValues.regNo || auSummaryValues.regNo || tataSummaryValues.regNo || regNo,
     financier: findPdfFinancier(text, fileName),
-    manufacturer: findPdfValue(text, ["Manufacturer", "Make", "Asset Make", "Vehicle Make"]),
-    model: findPdfValue(text, ["Asset Model", "Vehicle Model", "Model"]),
-    loanAmount: preferScheduleAmounts ? tableValues.loanAmount : exactLoanAmount || tableValues.loanAmount || findPdfAmount(text, ["Loan Amount", "Finance Amount", "Financed Amount", "Sanctioned Amount", "Total Loan Sanctioned", "Total Loan Disbursed", "Amount Financed", "Amount Financed Rs", "Disbursal Amount", "Principal Amount"], { positive: true, min: 1000 }),
-    emiAmount: tableValues.emiAmount || indostarEmiAmount || findPdfAmount(text, ["EMI Amount", "Installment Amount", "Instalment Amount", "Monthly Installment", "Monthly Instalment", "Repayment Amount", "EMI"], { positive: true, min: 100 }),
-    tenure: tableValues.tenure || findPdfValue(text, ["Tenure(In Months)", "Tenure In Months", "Tenure", "Period in Months", "Total Installment", "No of Installments", "No. of Installments", "No of Instalments", "No. of Instalments", "Number of EMIs"]),
-    paidEmi: tableValues.paidEmi || findPdfValue(text, ["Paid EMI", "EMI Paid", "Installments Paid", "Instalments Paid", "No of EMI Paid", "No. of EMI Paid"]),
-    interestRate: findPdfRate(text) || tableValues.interestRate,
-    emiStart: tableValues.emiStart || findPdfDate(text, ["EMI Start Date", "Installment Start Date", "Instalment Start Date", "First EMI Date", "First Instalment date", "First Installment date"]),
-    emiEnd: tableValues.emiEnd || findPdfDate(text, ["EMI End Date", "Maturity Date", "Last EMI Date", "Last Instalment date", "Last Installment date"]),
-    bankClosingPrincipal: preferScheduleAmounts ? tableValues.bankClosingPrincipal : tableValues.bankClosingPrincipal || findPdfAmount(text, ["Closing Principal", "Principal Outstanding", "Outstanding Principal", "Current POS", "POS", "Foreclosure Amount", "Foreclosure Value", "Closure Amount", "Amount to be paid", "Payable Amount"], { positive: true, min: 1000 }),
-    scheduleParsed: scheduleValues.scheduleParsed ? "yes" : "",
+    manufacturer: findPdfValue(text, ["Manufacturer", "Make", "Asset Make", "Vehicle Make", "Asset Description"]),
+    model: tvsSummaryValues.model || findPdfValue(text, ["Asset Model", "Vehicle Model", "Model"]),
+    loanStatus,
+    loanAmount: finalLoanAmount,
+    emiAmount: finalEmiAmount,
+    tenure: tataSummaryValues.tenure || tvsSummaryValues.tenure || indostarSummaryValues.tenure || auSummaryValues.tenure || cholaSummaryValues.tenure || tableValues.tenure || findPdfValue(text, ["Tenure(In Months)", "Tenure In Months", "Tenure", "Period in Months", "Total Installment", "No of Installments", "No. of Installments", "No of Instalments", "No. of Instalments", "Number of EMIs", "No of Instls", "No. of Instls", "Repayable in Instalments", "Repayable in Installments"], { requireDigit: true, minLength: 1 }),
+    paidEmi: scheduleValues.scheduleParsed === "yes"
+      ? (toNumber(tableValues.bankClosingPrincipal) <= 0 && toNumber(tableValues.tenure) > 0
+        ? tableValues.tenure
+        : (tableValues.emiSchedule?.filter((entry) => entry.status === "Paid").length || tableValues.paidEmi))
+      : (tableValues.paidEmi || findPdfValue(text, ["Paid EMI", "EMI Paid", "Installments Paid", "Instalments Paid", "No of EMI Paid", "No. of EMI Paid", "Instls Paid", "Instl Paid"])),
+    interestRate: tvsSummaryValues.interestRate || indostarSummaryValues.interestRate || auSummaryValues.interestRate || cholaSummaryValues.interestRate || tataSummaryValues.interestRate || findPdfRate(text) || tableValues.interestRate,
+    emiStart: tataScheduleDetected ? tableValues.emiStart : (tvsSummaryValues.emiStart || indostarSummaryValues.emiStart || auSummaryValues.emiStart || cholaSummaryValues.emiStart || tataSummaryValues.emiStart || tableValues.emiStart || findPdfDate(text, ["EMI Start Date", "Installment Start Date", "Instalment Start Date", "First EMI Date", "First Instalment date", "First Installment date", "First Instl Date", "Loan Authorization Date"])),
+    emiEnd: tataScheduleDetected ? tableValues.emiEnd : (tvsSummaryValues.emiEnd || indostarSummaryValues.emiEnd || auSummaryValues.emiEnd || cholaSummaryValues.emiEnd || tataSummaryValues.emiEnd || tableValues.emiEnd || findPdfDate(text, ["EMI End Date", "Maturity Date", "Last EMI Date", "Last Instalment date", "Last Installment date", "Last Instl Date"])),
+    bankClosingPrincipal: finalClosingPrincipal,
+    scheduleParsed: auRows.length > 0 || scheduleValues.scheduleParsed ? "yes" : "",
     emiSchedule: Array.isArray(tableValues.emiSchedule) ? tableValues.emiSchedule : [],
+    ...poonawallaValues,
+    _pdfFieldsTrusted: tataFieldsTrusted || cholaFieldsTrusted || anyFieldsTrusted,
     remarks: "Imported from bank PDF"
   };
 }
 
 function findPdfRegistration(text) {
-  const labelledReg = String(text ?? "").match(/\b(?:Registration\s*Number|Registration\s*No|Regn\s*Number|Regn\s*No|Vehicle\s*Number|Vehicle\s*No|Vehicle\s*Reg\s*No)\s*[:\-]?\s*([A-Z]{2}\s*\d{1,2}\s*[A-Z]{1,3}\s*[- ]?\s*\d{3,4})/i);
+  const labelledReg = String(text ?? "").match(/\b(?:Registration\s*Number|Registration\s*No|Regn\s*Number|Regn\s*No|Vehicle\s*Number|Vehicle\s*No|Vehicle\s*Reg\s*No)\s*[:\-]?\s*([A-Z]{2}\s*\d{1,5}\s*[A-Z]{1,4}\s*[- ]?\s*\d{3,8})/i);
   if (labelledReg) return labelledReg[1].replace(/\s*-\s*/g, " ").replace(/\s+/g, " ").trim().toUpperCase();
-  const looseReg = String(text ?? "").match(/\b([A-Z]{2}\s*\d{1,2}\s*[A-Z]{1,3}\s*[- ]?\s*\d{3,4})\b/i);
+  const looseReg = String(text ?? "").match(/\b([A-Z]{2}\s*\d{1,5}\s*[A-Z]{1,4}\s*[- ]?\s*\d{3,8})\b/i);
   return looseReg ? looseReg[1].replace(/\s*-\s*/g, " ").replace(/\s+/g, " ").trim().toUpperCase() : "";
 }
 
@@ -5955,7 +6350,9 @@ function findPdfOwner(text) {
     [/HDFC\s+BANK/i, /\b(MR\.?\s+[A-Z][A-Za-z .'-]{4,80}?)\s+(?=Customer\s+|Loan\s+Type)/i],
     [/ICICI\s+BANK/i, /Repayment\s+Schedule\s+(MR\.?\s+[A-Za-z][A-Za-z .'-]{2,80}?)\s+Loan\s+Account/i],
     [/SUNDARAM\s+FINANCE/i, /\b(MR\s+[A-Z][A-Z .'-]{4,80}?)\s+S\/O/i],
-    [/CHOLAMANDALAM/i, /Dear\s+Mr\.?\/Mrs\.?\s+(?:Dear\s+Mr\.?\/Mrs\.?\s+)?(.+?)(?=\s+Ref:)/i]
+    [/CHOLAMANDALAM/i, /Dear\s+Mr\.?\/Mrs\.?\s+(?:Dear\s+Mr\.?\/Mrs\.?\s+)?(.+?)(?=\s+Ref:)/i],
+    [/CHOLAMANDALAM/i, /Customer\s+Name\s*[:\-]?\s*(.+?)(?=\s+(?:Agreement|Contract|Loan|Account|Product|CIF|Customer\s+Code|$))/i],
+    [/CHOLAMANDALAM/i, /Borrower(?:'s)?\s+Name\s*[:\-]?\s*(.+?)(?=\s+(?:Co-?Borrower|Agreement|Contract|Loan|$))/i]
   ];
   for (const [bankPattern, ownerPattern] of bankSpecific) {
     if (!bankPattern.test(source)) continue;
@@ -6006,6 +6403,8 @@ function cleanPdfPersonName(value) {
 
 function findPdfFinancier(text, fileName = "") {
   const upperText = String(text ?? "").toUpperCase();
+  // The bank named inside IndoStar's repayment rows is the payment bank.
+  if (isIndostarRepaymentLayout(text)) return "INDOSTAR";
   const knownFinanciers = [
     "BAJAJ FINANCE",
     "MAHINDRA AND MAHINDRA FINANCIAL SERVICES LIMITED",
@@ -6013,7 +6412,6 @@ function findPdfFinancier(text, fileName = "") {
     "POONAWALLA FINCORP LTD",
     "POONAWALLA FINCORP LIMITED",
     "POONAWALLA FINCORP",
-    "KOTYARK INDUSTRIES LIMITED",
     "SUNDARAM FINANCE",
     "BANK OF BARODA",
     "BANDHAN BANK",
@@ -6131,33 +6529,212 @@ function findFinanceTableValues(text) {
   return {};
 }
 
+function findTvsCreditSummaryValues(text) {
+  if (isIndostarRepaymentLayout(text)) return {};
+  const source = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (!/TVS\s*CREDIT|TVS|Balance\s+Principle|Monthly\s+Due|Repayment\s+Schedule/i.test(source)) return {};
+
+  const amountAfter = (pattern) => {
+    const match = source.match(new RegExp(`${pattern}\\s*(?:\\([^)]*\\))?\\s*[:\\-]?\\s*(?:INR|RS\\.?|₹)?\\s*([\\d,]+(?:\\.\\d{1,2})?)`, "i"));
+    return match?.[1]?.replace(/,/g, "") ?? "";
+  };
+  const numberAfter = (pattern) => {
+    const match = source.match(new RegExp(`${pattern}\\s*(?:\\([^)]*\\))?\\s*[:\\-]?\\s*(\\d{1,4})`, "i"));
+    return match?.[1] ?? "";
+  };
+  const dateAfter = (pattern) => {
+    const match = source.match(new RegExp(`${pattern}\\s*(?:\\([^)]*\\))?\\s*[:\\-]?\\s*(\\d{1,2}[./-]?\\d{1,2}[./-]?\\d{2,4}|\\d{4}-\\d{1,2}-\\d{1,2}|\\d{1,2}[-\\s][A-Za-z]{3,}[-\\s]\\d{2,4})`, "i"));
+    return match ? formatDisplayDate(match[1]) : "";
+  };
+
+  const agreementMatch = source.match(/\bAgreement\s+(?:No\.?|Number)\s*[:\-]?\s*([A-Z0-9][A-Z0-9_\/-]{5,})/i) ||
+    source.match(/\bAgmt\s+No\.?(?:\s+Mobile\s+No\.?\s+Customer\s+No\.?)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9_\/-]{5,})/i) ||
+    source.match(/\b(?:Contract|Loan\s+Account)\s*(?:No\.?|Number)\s*[:\-]?\s*([A-Z0-9][A-Z0-9_\/-]{5,})/i);
+  const ownerMatch = source.match(/(?:Customer|Borrower|Client)\s*Name?\s*[:\-]?\s*([A-Za-z][A-Za-z .'-]{2,60}?)(?=\s+Proposal|\s+Father|\s+Agreement|\s+Asset|\s+Contract|$)/i);
+  const modelMatch = source.match(/(?:Asset|Vehicle)\s*Model?\s*[:\-]?\s*([A-Za-z0-9][A-Za-z0-9 .'-]{2,40}?)(?=\s+Customer|\s+Applicable|\s+Amount|$)/i);
+  const rateMatch = source.match(/Rate\s*of\s*Interest(?:\s*\(Amort\s*IRR\)\s*P\.?A\.?)?[^0-9]{0,30}([0-9]{1,2}(?:\.[0-9]{1,4})?)/i) ||
+    source.match(/(?:Amort\s*IRR|IRR|APR)[^0-9]{0,30}([0-9]{1,2}(?:\.[0-9]{1,4})?)/i);
+  const scheduleRows = parseTvsScheduleRows(text);
+  const scheduleEmi = mostCommonAmount(scheduleRows.map((row) => row.installmentAmount).filter((item) => toNumber(item) > 0));
+  const scheduleTenure = scheduleRows.length ? String(Math.max(...scheduleRows.map((row) => Number(row.installment) || 0))) : "";
+  const scheduleLoanAmount = scheduleRows[0]?.openingPrincipal ?? "";
+
+  const amountFinanced = amountAfter("Amount\\s+Financed");
+  const totalLoanAmount = amountAfter("Total\\s+Loan\\s+Amount");
+  const loanAmt = amountFinanced || totalLoanAmount || amountAfter("(?:Finance\\s+Amount|Loan\\s+Amount)");
+  const emiStart = dateAfter("(?:First\\s+Insta?l?ment\\s+Date|First\\s+EMI\\s+Date)");
+  const emiEnd = dateAfter("(?:Last\\s+Insta?l?ment\\s+Date|Maturity\\s+Date)");
+
+  const tvsFallback = findTvsOcrSummaryValues(text, scheduleRows);
+  const safeOwner = tvsFallback.owner || ((ownerMatch?.[1]?.trim() && /^[A-Z][A-Z ]+$/.test(ownerMatch[1].trim()) && !/TVS\s+CREDIT|SERVICES|LIMITED/i.test(ownerMatch[1]) ? ownerMatch[1].trim() : ""));
+  return {
+    loanAccount: tvsFallback.loanAccount || (agreementMatch?.[1] && /\d/.test(agreementMatch[1]) ? agreementMatch[1] : ""),
+    owner: safeOwner,
+    regNo: tvsFallback.regNo,
+    model: modelMatch?.[1]?.trim() || tvsFallback.model,
+    loanAmount: loanAmt || tvsFallback.loanAmount || scheduleLoanAmount,
+    emiAmount: scheduleEmi,
+    tenure: numberAfter("(?:No\\.?\\s*of\\s*Insta?l?ments?|Tenure|No\\.?\\s*of\\s*EMIs)") || tvsFallback.tenure || scheduleTenure,
+    interestRate: rateMatch?.[1] || tvsFallback.interestRate,
+    emiStart: emiStart || tvsFallback.emiStart || (scheduleRows[0]?.dueDate ? formatDisplayDate(scheduleRows[0].dueDate) : ""),
+    emiEnd: emiEnd || tvsFallback.emiEnd || (scheduleRows[scheduleRows.length - 1]?.dueDate ? formatDisplayDate(scheduleRows[scheduleRows.length - 1].dueDate) : "")
+  };
+}
+
+function findTvsOcrSummaryValues(source, scheduleRows = []) {
+  const value = String(source ?? "");
+  if (!/TVS\s*CREDIT|TVSCREDIT/i.test(value)) return {};
+  const agreement = [...value.matchAll(/\b((?:[A-Z]{2,8}|\d{4})[A-Z0-9]{6,20})\b/gi)]
+    .map((match) => match[1]).find((candidate) => /\d/.test(candidate) && candidate.length >= 10) ?? "";
+  const registration = value.match(/\b(GJ\s*\d{1,5}\s*[A-Z]{1,4}\s*\d{3,8})\b/i)?.[1]?.replace(/\s+/g, "").toUpperCase() ?? "";
+  const dates = [...value.matchAll(/\b(\d{1,2}[-/]\s*[A-Za-z]{3,}|\d{1,2}[-/]\d{1,2})[-/]?(\d{2,4})\b/gi)]
+    .map((match) => match[0].replace(/\s+/g, ""));
+  const dateValues = dates.filter((date) => !/^(?:01|4)-01-2024$/i.test(date));
+  const ownerLine = value.split(/\n+/).find((line) => /\d{4}[A-Z]{2}\d{6,}/.test(line));
+  const owner = ownerLine?.match(/([A-Z]{3,}(?:\s+[A-Z]{3,}){2,4})\s+.*\d{4}[A-Z]{2}\d{6,}/)?.[1]?.trim() ??
+    value.match(/(?:Customer|Borrower|ULES\]|llH)\s*(?:Name)?[^A-Za-z]{0,12}([A-Z][A-Z ]{8,60}?)(?=\s+(?:Agreement|3026|[A-Z]{2}\d{6,}))/)?.[1]?.trim() ??
+    value.match(/\b([A-Z]{3,}(?:\s+[A-Z]{3,}){2,4})\s+.*?(?=(?:\d{4}[A-Z]{2}|[A-Z]{2,8}\d{6,}))/)?.[1]?.trim() ?? "";
+  const amounts = [...value.matchAll(/\b(\d{1,3}(?:,?\d{2,3})+|\d{6,8})\b/g)].map((match) => match[1].replace(/,/g, "")).map(Number);
+  const loanAmount = amounts.find((amount) => amount >= 500000 && amount <= 10000000 && amount % 1000 === 0)?.toString() ?? "";
+  const tenure = value.match(/\b(\d{1,3})\b(?=\s*(?:EMIs?|instalments?|installments?))/i)?.[1] ??
+    Math.max(...[...value.matchAll(/\b(\d{1,3})\b/g)].map((match) => Number(match[1])).filter((amount) => amount >= 12 && amount <= 60), 0).toString();
+  const rateMatch = value.match(/(?:APR|IRR|Interest)[^\d]{0,25}(\d{1,2}\.\d{2})\s*%/i);
+  const model = value.match(/\b(TATA\s+[A-Z0-9 -]{3,30})\b/i)?.[1]?.trim() ?? "";
+  return {
+    agreement, loanAccount: agreement, owner, regNo: registration, model,
+    loanAmount, tenure, interestRate: rateMatch?.[1] ?? "",
+    emiStart: dateValues.find((date) => /AUG|[/-]\d{2}/i.test(date)) ? formatDisplayDate(dateValues[0]) : "",
+    emiEnd: dateValues.length > 1 ? formatDisplayDate(dateValues[1]) : ""
+  };
+}
+
 function parseTvsScheduleRows(text) {
+  if (isIndostarRepaymentLayout(text)) return [];
   const rawText = String(text ?? "");
-  if (!/TVS\s+CREDIT\s+SERVICES/i.test(rawText) || !/Repayment\s+Schedule/i.test(rawText)) return [];
-  return rawText
+  const scheduleStart = rawText.search(/(?:Repayment\s+Schedule\s*:\s*)?S\.?\s*No\.?\s+Due\s+Date\s+EMI|Repayment\s+Schedule\s*:/i);
+  const scheduleText = scheduleStart >= 0 ? rawText.slice(scheduleStart) : rawText;
+  const normalized = scheduleText.replace(/\s+/g, " ");
+  if (!/TVS/i.test(normalized) && !/Balance\s+Principle/i.test(normalized) && !/Vehicle\s+Insurance/i.test(normalized) && !/Monthly\s+Due/i.test(normalized) && !/Repayment\s+Schedule/i.test(normalized)) return [];
+
+  const parseTvsRowValues = (installment, rawDueDate, valueText) => {
+    let values = extractSignedMoneyLikeNumbers(valueText);
+    if (values.length < 4) return null;
+    let dueDate = formatOcrDate(rawDueDate);
+    let installmentAmount = values[0];
+    let principalPaid = values[1];
+    let interest = values[2];
+    let closingPrincipal = values[3];
+    let serviceTax = values.length >= 5 ? values[4] : "";
+
+    let emi = toNumber(installmentAmount);
+    let prin = toNumber(principalPaid);
+    let intr = toNumber(interest);
+
+    // Self-correct OCR missing decimal point or digit glitch
+    if (emi > 100) {
+      if (intr > 0 && intr < emi && (prin <= 0 || prin > emi || Math.abs(emi - (prin + intr)) > 50)) {
+        prin = Math.max(0, emi - intr);
+        principalPaid = String(prin);
+      } else if (prin > 0 && prin < emi && (intr <= 0 || intr > emi || Math.abs(emi - (prin + intr)) > 50)) {
+        intr = Math.max(0, emi - prin);
+        interest = String(intr);
+      }
+    }
+
+    if (toNumber(installmentAmount) <= 0 || toNumber(principalPaid) < 0) return null;
+    const openingPrincipal = String(toNumber(closingPrincipal) + toNumber(principalPaid));
+    return makeScheduleRow({
+      installment,
+      dueDate,
+      openingPrincipal,
+      installmentAmount,
+      principalPaid,
+      interest,
+      serviceTax,
+      closingPrincipal,
+      rate: deriveAnnualRate(interest, openingPrincipal)
+    });
+  };
+
+  const strictRows = [...normalized.matchAll(/(?:^|\s)(\d{1,3})\s+(\d{1,2}\s*[.\/-]\s*\d{1,2}\s*[.\/-]\s*\d{2,4})\s+(\d[\d,]*(?:\.\d{1,2})?)\s+(\d[\d,]*(?:\.\d{1,2})?)\s+(\d[\d,]*(?:\.\d{1,2})?)\s+(\d[\d,]*(?:\.\d{1,2})?)\s+(\d[\d,]*(?:\.\d{1,2})?)\s+(\d[\d,]*(?:\.\d{1,2})?)/gi)]
+    .map((match) => parseTvsRowValues(match[1], match[2], `${match[3]} ${match[4]} ${match[5]} ${match[6]} ${match[7]} ${match[8]}`))
+    .filter(Boolean);
+
+  if (strictRows.length > 0) return strictRows;
+
+  const lineRows = scheduleText
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .map((line) => {
+      const match = line.match(/^(?:0*(\d{1,3})|(?:\/|\|)?\s*(\d{1,3}))\s+(?:[\[\{]\s*)?(\d{1,2}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{2,4})\s+(.+)$/);
+      if (!match) return null;
+      const inst = match[1] || match[2];
+      if (!inst || Number(inst) <= 0) return null;
+      return parseTvsRowValues(inst, match[3], match[4]);
+    })
+    .filter(Boolean);
+
+  if (lineRows.length > 0) return lineRows;
+
+  // Some TVS scans lose the left S.No column but retain the date and all
+  // financial columns. Assign those rows in document order.
+  const dateOnlyRows = scheduleText.split(/\n+/).map((line) => {
+    const match = line.replace(/\s+/g, " ").trim().match(/^(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\s+(.+)$/);
+    if (!match) return null;
+    const row = parseTvsRowValues("", match[1], match[2]);
+    return row ? { ...row, installment: 0 } : null;
+  }).filter(Boolean);
+  if (dateOnlyRows.length > 0) return dateOnlyRows.map((row, index) => ({ ...row, installment: index + 1 }));
+
+  const rowStartPattern = /(?:^|\s)(\d{1,3})\s+(?:[\[\{]\s*)?(\d{1,2}\s*[./-]\s*\d{1,2}\s*[./-]\s*\d{2,4})(?=\s)/g;
+  const starts = [...normalized.matchAll(rowStartPattern)];
+  return starts.map((match, index) => {
+    const rowStart = match.index + match[0].length;
+    const rowEnd = starts[index + 1]?.index ?? normalized.length;
+    return parseTvsRowValues(match[1], match[2], normalized.slice(rowStart, rowEnd));
+  }).filter(Boolean);
+}
+
+function parseAuSmallFinanceScheduleRows(text) {
+  const rawText = String(text ?? "");
+  const normalized = rawText.replace(/\s+/g, " ");
+  if (!/AU\s+SMALL\s+FINANCE/i.test(normalized)) return [];
+  if (!/EMI\s+No\.?/i.test(normalized) || !/Closing\s+Principal/i.test(normalized)) return [];
+  const parseRow = (installment, dueDate, valueText) => {
+    const values = extractSignedMoneyLikeNumbers(valueText);
+    if (values.length < 4) return null;
+    const [installmentAmount, principalPaid, interest, closingPrincipal] = values;
+    if (toNumber(installmentAmount) <= 0 || toNumber(principalPaid) < 0 || toNumber(interest) < 0 || toNumber(closingPrincipal) < 0) return null;
+    const openingPrincipal = String(toNumber(closingPrincipal) + toNumber(principalPaid));
+    return makeScheduleRow({
+      installment,
+      dueDate,
+      openingPrincipal,
+      installmentAmount,
+      principalPaid,
+      interest,
+      closingPrincipal,
+      rate: deriveAnnualRate(interest, openingPrincipal)
+    });
+  };
+  const lineRows = rawText
     .split(/\n+/)
     .map((line) => line.replace(/\s+/g, " ").trim())
     .map((line) => {
       const match = line.match(/^(\d{1,3})\s+(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\s+(.+)$/);
       if (!match) return null;
-      const values = extractSignedMoneyLikeNumbers(match[3]);
-      if (values.length < 5) return null;
-      const [installmentAmount, principalPaid, interest, closingPrincipal, insurance] = values;
-      if (toNumber(installmentAmount) < 0 || toNumber(principalPaid) < 0 || toNumber(interest) < 0 || toNumber(closingPrincipal) < 0) return null;
-      const openingPrincipal = String(toNumber(closingPrincipal) + toNumber(principalPaid));
-      return makeScheduleRow({
-        installment: match[1],
-        dueDate: match[2],
-        openingPrincipal,
-        installmentAmount,
-        principalPaid,
-        interest,
-        serviceTax: insurance,
-        closingPrincipal,
-        rate: deriveAnnualRate(interest, openingPrincipal)
-      });
+      return parseRow(match[1], match[2], match[3]);
     })
-    .filter((row) => row?.installment > 0 && toNumber(row.closingPrincipal) >= 0);
+    .filter((row) => row?.installment > 0 && toNumber(row.installmentAmount) > 0 && toNumber(row.closingPrincipal) >= 0);
+  if (lineRows.length > 0) return lineRows;
+
+  const rowStartPattern = /(?:^|\s)(\d{1,3})\s+(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})(?=\s)/g;
+  const starts = [...normalized.matchAll(rowStartPattern)];
+  return starts.map((match, index) => {
+    const rowStart = match.index + match[0].length;
+    const rowEnd = starts[index + 1]?.index ?? normalized.length;
+    return parseRow(match[1], match[2], normalized.slice(rowStart, rowEnd));
+  }).filter(Boolean);
 }
 
 function parseIndusIndScheduleRows(text) {
@@ -6220,30 +6797,95 @@ function parseBandhanScheduleRows(text) {
 
 function parseTataScheduleRows(text) {
   const rawText = String(text ?? "");
-  if (!/TATA\s+MOTORS\s+FINANCE/i.test(rawText) || !/AMORTIZATION\s+TABLE/i.test(rawText)) return [];
-  return rawText
+  const normalized = rawText.replace(/\s+/g, " ");
+  if (!/TATA\s+MOTORS|TATA\s+CAPITAL|TATA|AMORTIZATION\s+TABLE/i.test(normalized) && !/Balance\s+Outstanding/i.test(normalized) && !/O\/?S\s+Principal/i.test(normalized)) return [];
+
+  const parseTataRowValues = (installment, dueDate, valueText) => {
+    let values = extractSignedMoneyLikeNumbers(valueText);
+    if (values.length < 4) return null;
+
+    let installmentAmount = values[0];
+    let principalPaid = values[1];
+    let interest = values[2];
+    let serviceTax = "";
+    let closingPrincipal = values[values.length - 1];
+
+    const val0 = toNumber(values[0]);
+    const val1 = toNumber(values[1]);
+    const val2 = toNumber(values[2]);
+
+    if (values.length >= 5) {
+      if (Math.abs(val0 - (val1 + val2)) <= Math.max(val0 * 0.15, 50)) {
+        installmentAmount = values[0];
+        principalPaid = values[1];
+        interest = values[2];
+        serviceTax = values.length >= 6 ? values[3] : "";
+        closingPrincipal = values[values.length - 1];
+      } else if (val0 > val1 && val0 > val1 * 2 && val0 > 1000) {
+        installmentAmount = values[1];
+        principalPaid = values[2];
+        interest = values[3];
+        closingPrincipal = values[values.length - 1];
+      } else {
+        installmentAmount = values[0];
+        principalPaid = values[1];
+        interest = values[2];
+        serviceTax = values.length >= 6 ? values[3] : "";
+        closingPrincipal = values[values.length - 1];
+      }
+    }
+
+    let emi = toNumber(installmentAmount);
+    let prin = toNumber(principalPaid);
+    let intr = toNumber(interest);
+
+    // Auto-fix OCR missing decimal point using EMI = Principal + Interest
+    if (emi > 100) {
+      if (intr > 0 && intr < emi && (prin <= 0 || prin > emi || Math.abs(emi - (prin + intr)) > 50)) {
+        prin = Math.max(0, emi - intr);
+        principalPaid = prin.toFixed(2);
+      } else if (prin > 0 && prin < emi && (intr <= 0 || intr > emi || Math.abs(emi - (prin + intr)) > 50)) {
+        intr = Math.max(0, emi - prin);
+        interest = intr.toFixed(2);
+      }
+    }
+
+    if (toNumber(installmentAmount) <= 0 || toNumber(principalPaid) < 0) return null;
+    const openingPrincipal = String(toNumber(closingPrincipal) + toNumber(principalPaid));
+    return makeScheduleRow({
+      installment,
+      dueDate,
+      openingPrincipal,
+      installmentAmount,
+      principalPaid,
+      interest,
+      serviceTax,
+      closingPrincipal,
+      rate: deriveAnnualRate(interest, openingPrincipal)
+    });
+  };
+
+  const lineRows = rawText
     .split(/\n+/)
     .map((line) => line.replace(/\s+/g, " ").trim())
     .map((line) => {
-      const match = line.match(/^(\d{1,3})\s+(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\s+(.+)$/);
-      if (!match || Number(match[1]) <= 0) return null;
-      const values = extractSignedMoneyLikeNumbers(match[3]);
-      if (values.length < 5) return null;
-      const [installmentAmount, principalPaid, interest, insurance, closingPrincipal] = values;
-      const openingPrincipal = String(toNumber(closingPrincipal) + toNumber(principalPaid));
-      return makeScheduleRow({
-        installment: match[1],
-        dueDate: match[2],
-        openingPrincipal,
-        installmentAmount,
-        principalPaid,
-        interest,
-        serviceTax: insurance,
-        closingPrincipal,
-        rate: deriveAnnualRate(interest, openingPrincipal)
-      });
+      const match = line.match(/^(?:0*(\d{1,3})|(?:\/|\|)?\s*(\d{1,3}))\s+(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\s+(.+)$/);
+      if (!match) return null;
+      const inst = match[1] || match[2];
+      if (!inst || Number(inst) <= 0) return null;
+      return parseTataRowValues(inst, match[3], match[4]);
     })
-    .filter((row) => row?.installment > 0 && toNumber(row.installmentAmount) > 0 && toNumber(row.closingPrincipal) >= 0);
+    .filter(Boolean);
+
+  if (lineRows.length > 0) return lineRows;
+
+  const rowStartPattern = /(?:^|\s)(\d{1,3})\s+(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})(?=\s)/g;
+  const starts = [...normalized.matchAll(rowStartPattern)];
+  return starts.map((match, index) => {
+    const rowStart = match.index + match[0].length;
+    const rowEnd = starts[index + 1]?.index ?? normalized.length;
+    return parseTataRowValues(match[1], match[2], normalized.slice(rowStart, rowEnd));
+  }).filter(Boolean);
 }
 
 function isDateFreeRepaymentFormat(text) {
@@ -6307,6 +6949,33 @@ function parseDateFreeScheduleRows(text) {
   });
 }
 
+function inferProfileAgreementFromPdf(pdfRow = {}, rows = []) {
+  const candidates = (rows ?? []).filter((row) => !isBodyRow(row) && isValidAgreementValue(row.loanAccount));
+  if (candidates.length === 1) return candidates[0].loanAccount;
+
+  const normalizeMatchText = (value) => String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+  const pdfCustomer = normalizeMatchText(pdfRow.owner);
+  if (pdfCustomer.length >= 4) {
+    const customerMatches = candidates.filter((row) => {
+      const profileCustomer = normalizeMatchText(row.owner || row.clientName || row.customerName);
+      return profileCustomer && (profileCustomer === pdfCustomer ||
+        profileCustomer.includes(pdfCustomer) || pdfCustomer.includes(profileCustomer));
+    });
+    if (customerMatches.length === 1) return customerMatches[0].loanAccount;
+  }
+
+  const pdfRegNo = normalizeRegNo(baseRegNo(pdfRow.regNo));
+  if (pdfRegNo) {
+    const registrationMatches = candidates.filter((row) =>
+      normalizeRegNo(baseRegNo(row.regNo)) === pdfRegNo
+    );
+    if (registrationMatches.length === 1) return registrationMatches[0].loanAccount;
+  }
+  return "";
+}
+
 function summarizeDateFreeScheduleRows(rows, text) {
   const uniqueRows = Array.from(new Map((rows ?? []).map((row) => [row.installment, row])).values())
     .sort((first, second) => first.installment - second.installment);
@@ -6336,11 +7005,31 @@ function summarizeDateFreeScheduleRows(rows, text) {
 }
 
 function findScheduleTableValues(text) {
+  // Recognize Poonawalla before generic parsers interpret Rate / Days as money.
+  if (isPoonawallaScheduleFormat(text)) {
+    const rows = parseOpeningBalanceScheduleRows(text);
+    return rows.length > 0 ? summarizeScheduleRows(rows, text) : {};
+  }
+  if (isIndostarRepaymentLayout(text)) {
+    const rows = parseIndostarScheduleRows(text);
+    return rows.length > 0 ? summarizeScheduleRows(rows, text) : {};
+  }
+  const auRows = parseAuScheduleRows(text);
+  if (auRows.length > 0) return summarizeScheduleRows(auRows, text);
+  // Cholamandalam has a specific format that must be parsed before generic parsers.
+  const cholaRows = parseCholaScheduleRows(text);
+  if (cholaRows.length > 0) return summarizeScheduleRows(cholaRows, text);
   // This two-date format has a stable column order and must be handled
   // before generic repayment parsers can mistake its columns for another
   // bank's schedule.
   const ashokLeylandRows = parseTwoDateScheduleRows(text);
   if (ashokLeylandRows.length > 0) return summarizeScheduleRows(ashokLeylandRows, text);
+  // Tata's six-column schedule also resembles generic TVS tables; select its
+  // validated row parser first so the complete 33-row schedule is retained.
+  if (/TATA\s+MOTORS|TATA\s+CAPITAL/i.test(String(text ?? ""))) {
+    const tataRows = parseTataScheduleRows(text);
+    if (tataRows.length > 0) return summarizeScheduleRows(tataRows, text);
+  }
   const tvsRows = parseTvsScheduleRows(text);
   if (tvsRows.length > 0) return summarizeScheduleRows(tvsRows, text);
   const indostarRows = parseIndostarScheduleRows(text);
@@ -6460,32 +7149,53 @@ function parseMahindraScheduleRows(text) {
   }).filter((row) => row?.installment > 0 && toNumber(row.installmentAmount) > 0 && toNumber(row.closingPrincipal) >= 0);
 }
 
+function isPoonawallaScheduleFormat(text) {
+  const source = String(text ?? "").replace(/\s+/g, " ");
+  return (/POONAWALLA\s*FINCORP/i.test(source) && /(?:Repayment|Install?ment)\s+Schedule/i.test(source)) ||
+    (/Opening\s+Balance/i.test(source) && /Effective\s+Rate/i.test(source) && /\bDays\b/i.test(source));
+}
+
+function findPoonawallaOwner(text) {
+  if (!isPoonawallaScheduleFormat(text)) return "";
+  const match = String(text ?? "").match(/Repayment\s+Schedule\s+For\s+(?:Agreement\s+No\.?\s*[:\-]?\s*)?[A-Z0-9][A-Z0-9_/-]*\s+([A-Za-z][A-Za-z .&'()-]{2,100}?)\s+Note\s*:/i);
+  return cleanPdfPersonName(match?.[1] ?? "");
+}
+
 function parseOpeningBalanceScheduleRows(text) {
-  const normalized = String(text ?? "").replace(/\s+/g, " ");
-  if (!/Opening\s+Balance/i.test(normalized) || !/Effective\s+Rate/i.test(normalized)) return [];
-  const rowStartPattern = /(?:^|\s)(\d{1,3})\s+(\d{1,2}[-\s][A-Za-z]{3,}[-\s]\d{2,4}|\d{1,2}[./-]\d{1,2}[./-]\d{2,4})(?=\s)/g;
-  const starts = [...normalized.matchAll(rowStartPattern)];
-  const rawRows = starts.map((match, index) => {
-    const rowStart = match.index + match[0].length;
-    const rowEnd = starts[index + 1]?.index ?? normalized.length;
-    const values = extractSignedMoneyLikeNumbers(normalized.slice(rowStart, rowEnd));
-    if (values.length < 4) return null;
-    const [openingPrincipal, installmentAmount, principalPaid, interest] = values;
-    const rate = values.find((value) => toNumber(value) > 0 && toNumber(value) <= 40) || "";
-    return {
-      installment: match[1],
-      dueDate: match[2],
-      openingPrincipal,
-      installmentAmount,
-      principalPaid,
-      interest,
-      rate
-    };
-  }).filter((row) => row?.installment > 0 && toNumber(row.installmentAmount) > 0 && toNumber(row.openingPrincipal) > 0);
-  return rawRows.map((row, index) => makeScheduleRow({
-    ...row,
-    closingPrincipal: rawRows[index + 1]?.openingPrincipal || String(toNumber(row.openingPrincipal) - toNumber(row.principalPaid))
-  }));
+  const source = String(text ?? "");
+  if (!isPoonawallaScheduleFormat(source) &&
+    !(/Opening\s+Balance/i.test(source) && /Effective\s+Rate/i.test(source))) return [];
+  const normalize = (value) => normalizeWrappedPdfNumbers(value.replace(/[|\u00a0]/g, " ").replace(/\s+/g, " "))
+    .replace(/(\d{1,2})\s*[-/]\s*([A-Za-z]{3,})\s*[-/]\s*(\d{2,4})/g, "$1-$2-$3");
+  const date = "\\d{1,2}(?:[- ][A-Za-z]{3,}[- ]|[./-]\\d{1,2}[./-])\\d{2,4}";
+  const money = "\\d[\\d,]*(?:\\.\\d{1,2})?";
+  // Instl | Date | Opening | EMI | Principal | Interest | Effective rate / Days.
+  // Match only contiguous columns, never numbers from totals or the next pass.
+  const pattern = new RegExp(`(?:^|\\s)(\\d{1,3})\\s+(${date})\\s+(${money})\\s+(${money})\\s+(${money})\\s+(${money})\\s+(\\d{1,2}(?:\\.\\d{1,4})?)\\s*%?\\s*/\\s*(\\d{1,3})(?=\\s|$)`, "gi");
+  // Prefer intact table lines over sparse OCR's reordered cells.
+  const lineMatches = source.split(/\n+/).flatMap((line) => [...normalize(line).matchAll(pattern)]);
+  const matches = lineMatches.length > 0 ? lineMatches : [...normalize(source).matchAll(pattern)];
+  const rows = new Map();
+  for (const match of matches) {
+    const [, installment, rawDate, openingPrincipal, installmentAmount, principalPaid, interest, rate, days] = match;
+    const dueDate = formatDisplayDate(rawDate);
+    const parsedDate = parseDisplayDate(dueDate);
+    const opening = toNumber(openingPrincipal);
+    const principal = toNumber(principalPaid);
+    const emi = toNumber(installmentAmount);
+    const interestAmount = toNumber(interest);
+    if (!parsedDate || formatDisplayDate(scheduleDateToIso(dueDate)) !== dueDate ||
+      Number(installment) <= 0 || opening <= 0 || emi <= 0 || principal > opening ||
+      Math.abs(emi - principal - interestAmount) > 1 || Number(rate) > 40 ||
+      Number(days) <= 0 || Number(days) > 366) continue;
+    const key = `${Number(installment)}|${dueDate}`;
+    // Keep the first validated reading; sparse OCR can reorder later copies.
+    if (!rows.has(key)) rows.set(key, makeScheduleRow({
+      installment, dueDate, openingPrincipal, installmentAmount, principalPaid, interest, rate,
+      closingPrincipal: (opening - principal).toFixed(2)
+    }));
+  }
+  return [...rows.values()].sort((first, second) => first.installment - second.installment);
 }
 
 function parseSundaramScheduleRows(text) {
@@ -6955,11 +7665,74 @@ function parseBankNameScheduleRows(text) {
   }).filter((row) => row.installment > 0 && toNumber(row.installmentAmount) > 0 && toNumber(row.closingPrincipal) >= 0);
 }
 
+function isIndostarRepaymentLayout(text) {
+  const source = String(text ?? "").replace(/\s+/g, " ");
+  return /\bINDO\s*STAR\b/i.test(source) ||
+    (/REPAYMENT\s+SCHEDULE\s+FOR\s+AGREEMENT/i.test(source) &&
+      /Bank\s+Name/i.test(source) && /\bMI\b/i.test(source) && /Out\s*Standing/i.test(source)) ||
+    (/EMI\s+No\.?\s+Due\s+Date\s+EMI\s+Amount\s+Principal\s+Interest\s+Balance\s+Outstanding/i.test(source) && !/TATA\s+MOTORS|TATA\s+CAPITAL/i.test(source));
+}
+
 function isIndostarScheduleFormat(text) {
   const value = String(text ?? "");
-  return /REPAYMENT\s*SCHEDULE\s*FOR\s*AGREEMENT/i.test(value) ||
+  return isIndostarRepaymentLayout(value) || /REPAYMENT\s*SCHEDULE\s*FOR\s*AGREEMENT/i.test(value) ||
     /INDOSTAR/i.test(value) ||
+    (/Balance\s+Outstanding/i.test(value) && /Due\s+Date/i.test(value) && /\bEMI\b/i.test(value)) ||
     (/Vehicle\s*Number/i.test(value) && /Out\s*Stand(?:ing)?\s*Principal/i.test(value) && /\bEMI\b/i.test(value));
+}
+
+function findLegacyIndostarSummaryValues(text) {
+  const source = String(text ?? "").replace(/\s+/g, " ").trim();
+  if (!/INDOSTAR/i.test(source)) return {};
+  const amountAfter = (pattern) => source.match(new RegExp(`${pattern}\s*[:\-]?\s*(?:INR|RS\.?|₹)?\s*([\d,]+(?:\.\d{1,2})?)`, "i"))?.[1]?.replace(/,/g, "") ?? "";
+  const numberAfter = (pattern) => source.match(new RegExp(`${pattern}\s*[:\-]?\s*(\d{1,4})`, "i"))?.[1] ?? "";
+  const dateAfter = (pattern) => source.match(new RegExp(`${pattern}\s*[:\-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{1,2}[-\s][A-Za-z]{3,}[-\s]\d{2,4})`, "i"))?.[1] ?? "";
+  return {
+    loanAmount: amountAfter("(?:Loan\\s+(?:Am|Amount)\\.?|Finance\\s+Amount|Amount\\s+Financed)"),
+    emiAmount: amountAfter("(?:EMI\\s+(?:Am|Amount)\\.?|Instl\\.?\\s+(?:Am|Amount)\\.?|Installment\\s+Amount|Instalment\\s+Amount)"),
+    tenure: numberAfter("(?:Tenure|No\\.?\\s*of\\s*EMIs?|No\\.?\\s*of\\s*Installments?|No\\.?\\s*of\\s*Instls?\\.?)"),
+    interestRate: source.match(/(?:Rate\s+of\s+Interest|Interest\s+Rate|ROI)\s*[:\-]?\s*([\d]+(?:\.\d{1,4})?)/i)?.[1] ?? "",
+    emiStart: dateAfter("(?:EMI\\s+Start|First\\s+Repayment\\s+Date|First\\s+EMI\\s+Date)"),
+    emiEnd: dateAfter("(?:EMI\\s+End|Last\\s+Repayment\\s+Date|Last\\s+EMI\\s+Date|Maturity\\s+Date)")
+  };
+}
+
+function findIndostarSummaryValues(text) {
+  const source = normalizeWrappedPdfNumbers(String(text ?? "").replace(/[|\u00a0]/g, " ").replace(/\s+/g, " ").trim());
+  if (!isIndostarScheduleFormat(source)) return {};
+  const amount = (labels) => findPdfAmount(source, labels, { positive: true, min: 100 });
+  const value = (labels) => findPdfValue(source, labels, { requireDigit: true, minLength: 1 });
+  const agreementNumber = source.match(/Agreement\s+(?:Number|No)\.?\s*[:\-]*\s*([A-Z0-9][A-Z0-9_\/-]{5,})/i)?.[1] ?? "";
+  const rows = parseIndostarScheduleRows(text);
+  const scheduleEmi = mostCommonAmount(rows.map((row) => row.installmentAmount).filter((item) => toNumber(item) > 0));
+  const rowNumbers = [...source.matchAll(/\b([1-9]\d{0,2})\s+\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/gi)].map((match) => Number(match[1])).filter((number) => number > 0);
+  const firstRowMatch = source.match(/\b1\s+\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/i);
+  const nextRowMatch = firstRowMatch ? source.slice((firstRowMatch.index ?? 0) + firstRowMatch[0].length).match(/\b2\s+\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b/i) : null;
+  const firstRowText = firstRowMatch ? source.slice((firstRowMatch.index ?? 0) + firstRowMatch[0].length, (firstRowMatch.index ?? 0) + firstRowMatch[0].length + (nextRowMatch?.index ?? 240)) : "";
+  const firstRowValues = extractSignedMoneyLikeNumbers(firstRowText);
+  const fallbackEmi = firstRowValues[0] ?? "";
+  const fallbackPrincipal = firstRowValues[1] ?? "";
+  const fallbackClosing = firstRowValues.length >= 5 ? firstRowValues[4] : firstRowValues[3] ?? "";
+  const fallbackLoanAmount = toNumber(fallbackPrincipal) > 0 && toNumber(fallbackClosing) >= 0 ? String(toNumber(fallbackPrincipal) + toNumber(fallbackClosing)) : "";
+  const scheduleTenure = rows.length ? String(Math.max(...rows.map((row) => Number(row.installment) || 0))) : (rowNumbers.length ? String(Math.max(...rowNumbers)) : "");
+  const loanAmountMatch = source.match(/Loan\s+(?:Amount|Am\.?)\s*[:\-]?\s*(?:INR|RS\.?|₹)?\s*([\d,]+(?:\.\d{1,2})?)/i);
+  const emiAmountMatch = source.match(/(?:EMI|Instalment|Installment)\s+(?:Amount|Amt)\s*[:\-]?\s*(?:INR|RS\.?|₹)?\s*([\d,]+(?:\.\d{1,2})?)/i);
+  const owner = source.match(/Customer(?:\s+Name)?\s*[:\-]?\s*(.+?)(?=\s+(?:Processing\s+Fee|Agreement|Loan\s+Amount|Rate\s+of\s+Interest|Vehicle\s+(?:No|Number)|EMI\s+Amount))/i)?.[1]?.trim() ?? "";
+  const regNo = source.match(/Vehicle\s+(?:No|Number)\.?\s*[:\-]?\s*([A-Z]{2}\s*\d{1,2}\s*[A-Z]{1,3}\s*[- ]?\s*\d{3,4})/i)?.[1]?.replace(/\s+/g, " ").trim().toUpperCase() ?? "";
+  const period = source.match(/EMI\s+Period\s*[:\-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\s*(?:to|[-–])\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})/i);
+  const startDate = period?.[1] ?? findPdfDate(source, ["EMI Period", "EMI Start Date", "First EMI Date"]);
+  const endDate = period?.[2] ?? findPdfDate(source, ["EMI End Date", "Maturity Date", "Last EMI Date"]);
+  return {
+    agreementNumber,
+    owner,
+    regNo,
+    loanAmount: loanAmountMatch?.[1]?.replace(/,/g, "") || amount(["Loan Amount", "Loan Am", "Finance Amount", "Amount Financed"]) || rows[0]?.openingPrincipal || fallbackLoanAmount,
+    emiAmount: emiAmountMatch?.[1]?.replace(/,/g, "") || amount(["EMI Amount", "EMI Am", "Installment Amount", "Instalment Amount"]) || scheduleEmi || fallbackEmi,
+    tenure: value(["Tenure / EMIs", "Tenure", "Number of EMIs", "No of Installments"]) || scheduleTenure,
+    interestRate: source.match(/(?:Rate\s+of\s+Interest|Interest\s+Rate|ROI)\s*[:\-]?\s*([\d]+(?:\.\d{1,4})?)/i)?.[1] ?? "",
+    emiStart: startDate ? formatDisplayDate(startDate) : "",
+    emiEnd: endDate ? formatDisplayDate(endDate) : ""
+  };
 }
 
 function findIndostarEmiAmount(text) {
@@ -6972,34 +7745,89 @@ function findIndostarEmiAmount(text) {
 }
 
 function parseIndostarScheduleRows(text) {
+  if (isIndostarRepaymentLayout(text)) return parseIndostarRepaymentRows(text);
   const normalized = String(text ?? "").replace(/\s+/g, " ");
   if (!isIndostarScheduleFormat(normalized)) return [];
-  const amount = "-?\\d[\\d,]*(?:\\.\\d{1,2})?";
-  const rowPattern = new RegExp(
-    `(?:^|\\s)(\\d{1,3})\\s+(\\d{1,2}[./-]\\d{1,2}[./-]\\d{2,4})\\s+(?:[A-Z][A-Z|.&-]*\\s+){1,8}?(${amount})\\s+(${amount})\\s+(${amount})\\s+(${amount})\\s+(${amount})(?=\\s|$)`,
-    "gi"
-  );
-  return [...normalized.matchAll(rowPattern)]
-    .map((match) => {
-      const installmentAmount = match[3];
-      const principalPaid = match[4];
-      const interest = match[5];
-      const mi = match[6];
-      const closingPrincipal = match[7];
+  const datePattern = "(\\d{1,2}[./-]\\d{1,2}[./-]\\d{2,4}|\\d{1,2}[-\\s][A-Za-z]{3,}[-\\s]\\d{2,4})";
+  const parseValues = (installment, dueDate, valueText) => {
+    const values = extractSignedMoneyLikeNumbers(valueText);
+    if (values.length < 4) return null;
+    const makeCandidate = (installmentAmount, principalPaid, interest, closingPrincipal, serviceTax = "") => {
+      const emiBreakup = Math.abs(toNumber(installmentAmount) - toNumber(principalPaid) - toNumber(interest));
+      if (toNumber(installmentAmount) < 100 || toNumber(principalPaid) <= 0 || toNumber(interest) <= 0 || toNumber(closingPrincipal) < 0 || emiBreakup > Math.max(toNumber(installmentAmount) * 0.2, 100)) return null;
       const openingPrincipal = String(toNumber(closingPrincipal) + toNumber(principalPaid));
-      return makeScheduleRow({
-        installment: match[1],
-        dueDate: match[2],
-        openingPrincipal,
-        installmentAmount,
-        principalPaid,
-        interest,
-        serviceTax: mi,
-        closingPrincipal,
-        rate: deriveAnnualRate(interest, openingPrincipal)
-      });
+      return makeScheduleRow({ installment, dueDate, openingPrincipal, installmentAmount, principalPaid, interest, serviceTax, closingPrincipal, rate: deriveAnnualRate(interest, openingPrincipal) });
+    };
+    if (values.length >= 5) {
+      const standard = makeCandidate(values[0], values[1], values[2], values[4], values[3]);
+      if (standard) return standard;
+      const breakupFirst = makeCandidate(values[3], values[0], values[1], values[4], values[2]);
+      if (breakupFirst) return breakupFirst;
+    }
+    const direct = makeCandidate(values[0], values[1], values[2], values[3]);
+    if (direct) return direct;
+    return makeCandidate(values[2], values[0], values[1], values[3]);
+  };
+  const linePattern = new RegExp(`^(\\d{1,3})\\s+${datePattern}\\s+(.+)$`, "i");
+  const lineRows = String(text ?? "")
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .map((line) => {
+      const match = line.match(linePattern);
+      return match ? parseValues(match[1], match[2], match[3]) : null;
     })
-    .filter((row) => row?.installment > 0 && toNumber(row.installmentAmount) > 0 && toNumber(row.closingPrincipal) >= 0);
+    .filter(Boolean);
+  if (lineRows.length > 0) return lineRows;
+
+  const rowStartPattern = new RegExp(`(?:^|\\s)(\\d{1,3})\\s+${datePattern}(?=\\s)`, "gi");
+  const starts = [...normalized.matchAll(rowStartPattern)];
+  return starts.map((match, index) => {
+    const rowStart = match.index + match[0].length;
+    const rowEnd = starts[index + 1]?.index ?? normalized.length;
+    return parseValues(match[1], match[2], normalized.slice(rowStart, rowEnd));
+  }).filter(Boolean);
+}
+
+function parseIndostarRepaymentRows(text) {
+  const normalize = (value) => normalizeWrappedPdfNumbers(String(value ?? "")
+    .replace(/[|\u00a0]/g, " ").replace(/\s+/g, " "));
+  const source = normalize(text);
+  const hasMiColumn = /\bMI\b/i.test(source);
+  const money = "-?\\d[\\d,]*(?:\\.\\d{1,2})?";
+  const date = "\\d{1,2}\\s*[./-]\\s*\\d{1,2}\\s*[./-]?\\s*\\d{4}|\\d{1,2}[- ][A-Za-z]{3,}[- ]\\d{4}";
+  // Original: EMI | Principal | Interest | MI | Outstanding.
+  // Summary/screenshot: EMI | Principal | Interest | Outstanding.
+  const columns = hasMiColumn ? 5 : 4;
+  const amounts = Array.from({ length: columns }, () => `(${money})`).join("\\s+");
+  const pattern = new RegExp(`(?:^|\\s)(\\d{1,3})\\s+(${date})\\s+(?:[A-Z][A-Z&.-]*\\s+){0,8}${amounts}(?=\\s|$)`, "gi");
+  const explicitRate = source.match(/Rate\s+of\s+Interest\s*[:\-]?\s*(\d+(?:\.\d{1,4})?)/i)?.[1] ?? "";
+  const rows = new Map();
+  const addMatches = (value) => {
+    for (const match of normalize(value).matchAll(pattern)) {
+      const [, installment, rawDate, installmentAmount, principalPaid, interest] = match;
+      const closingPrincipal = match[hasMiColumn ? 7 : 6];
+      const serviceTax = hasMiColumn ? match[6] : "";
+      const dueDate = formatDisplayDate(formatOcrDate(rawDate));
+      const emi = toNumber(installmentAmount);
+      const principal = toNumber(principalPaid);
+      const closing = toNumber(closingPrincipal);
+      if (Number(installment) <= 0 || !scheduleDateToIso(dueDate) ||
+        formatDisplayDate(scheduleDateToIso(dueDate)) !== dueDate ||
+        emi <= 0 || principal < 0 || toNumber(interest) < 0 || closing < 0 ||
+        Math.abs(emi - principal - toNumber(interest)) > 1) continue;
+      const key = `${Number(installment)}|${dueDate}`;
+      if (!rows.has(key)) rows.set(key, makeScheduleRow({
+        installment, dueDate, installmentAmount, principalPaid, interest, serviceTax,
+        openingPrincipal: (closing + principal).toFixed(2), closingPrincipal,
+        // Broken-period interest in the first EMI is not the contractual rate.
+        rate: explicitRate
+      }));
+    }
+  };
+  // Prefer complete lines; recover wrapped rows without overwriting good reads.
+  String(text ?? "").split(/\n+/).forEach(addMatches);
+  addMatches(source);
+  return [...rows.values()].sort((first, second) => first.installment - second.installment);
 }
 
 function parseBankNameSegmentRows(normalized) {
@@ -7242,16 +8070,38 @@ function findPdfValue(text, labels, options = {}) {
 }
 
 function findPdfAmount(text, labels, options = {}) {
-  const candidates = [];
+  const minVal = options.min ?? (options.positive ? 1 : 0);
+  const maxVal = options.max ?? 100000000;
+  const source = String(text ?? "");
+
+  const cleanNumber = (str) => str.replace(/,/g, "").trim();
+
+  const isInvalidCandidate = (valStr, numVal) => {
+    if (isNaN(numVal) || numVal < minVal || numVal > maxVal) return true;
+    if (/^[6-9]\d{9}$/.test(valStr)) return true;
+    if (/^(202[0-9]|203[0-5])$/.test(valStr)) return true;
+    return false;
+  };
+
   for (const label of labels) {
-    const pattern = new RegExp(`${looseLabelPattern(label)}[^0-9]{0,80}(?:INR|Rs\\.?)?\\s*([0-9][0-9,]*(?:\\.\\d{1,2})?)`, "gi");
-    for (const match of text.matchAll(pattern)) {
-      const value = match[1].replace(/,/g, "");
-      candidates.push(value);
+    const escaped = looseLabelPattern(label);
+
+    const sameLinePattern = new RegExp(`${escaped}\\s*(?:\\([^)]*\\))?\\s*[:\\-=]?\\s*(?:INR|RS\\.?|₹)?\\s*([0-9][0-9,]*(?:\\.\\d{1,2})?)`, "gi");
+    for (const match of source.matchAll(sameLinePattern)) {
+      const valStr = cleanNumber(match[1]);
+      const num = toNumber(valStr);
+      if (!isInvalidCandidate(valStr, num)) return valStr;
+    }
+
+    const tightPattern = new RegExp(`${escaped}[^\\n\\r0-9]{0,40}(?:INR|RS\\.?|₹)?\\s*([0-9][0-9,]*(?:\\.\\d{1,2})?)`, "gi");
+    for (const match of source.matchAll(tightPattern)) {
+      const valStr = cleanNumber(match[1]);
+      const num = toNumber(valStr);
+      if (!isInvalidCandidate(valStr, num)) return valStr;
     }
   }
-  if (options.positive) return candidates.find((value) => toNumber(value) > 0 && toNumber(value) >= (options.min ?? 0)) ?? "";
-  return candidates[0] ?? "";
+
+  return "";
 }
 
 function findPdfExactAmount(text, labels) {
@@ -7295,11 +8145,11 @@ function findPdfDate(text, labels) {
 }
 
 function looseLabelPattern(label) {
-  return label
+  const parts = label
     .trim()
     .split(/\s+/)
-    .map((word) => word.split("").map((char) => escapeRegExp(char)).join("\\s*"))
-    .join("\\s*");
+    .map((word) => word.split("").map((char) => escapeRegExp(char)).join("\\s*"));
+  return `\\b${parts.join("\\s+")}\\b`;
 }
 
 function escapeRegExp(value) {

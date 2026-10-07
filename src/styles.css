@@ -4610,6 +4610,7 @@ textarea {
   height: 52px;
   position: relative;
   width: 52px;
+  object-fit: cover;
 }
 .login-logo::after {
   background: #ffc02e;
@@ -9252,4 +9253,76 @@ textarea {
 
 @media (max-width: 680px) {
   .login-card { max-width: none; padding: 38px 20px 28px; }
+}
+
+.login-privacy-link {
+  margin: 14px 0 0;
+  text-align: center;
+}
+.login-privacy-link a {
+  color: #ffc02e;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.public-policy-page {
+  min-height: 100vh;
+  padding: 48px 20px;
+  background: #f4f7fb;
+  color: #1d2a3a;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.public-policy-card {
+  box-sizing: border-box;
+  width: min(860px, 100%);
+  margin: 0 auto;
+  padding: 48px 56px;
+  background: #fff;
+  border: 1px solid #dce5ef;
+  border-radius: 18px;
+  box-shadow: 0 12px 34px rgba(17, 40, 67, .08);
+  line-height: 1.65;
+}
+.public-policy-kicker {
+  margin: 0 0 8px;
+  color: #2367b1;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .16em;
+}
+.public-policy-card h1 {
+  margin: 0;
+  color: #102b4b;
+  font-size: clamp(32px, 5vw, 48px);
+  line-height: 1.1;
+}
+.public-policy-updated {
+  margin: 12px 0 28px;
+  color: #61758c;
+  font-size: 14px;
+}
+.public-policy-card h2 {
+  margin: 32px 0 8px;
+  color: #163f6e;
+  font-size: 21px;
+  line-height: 1.25;
+}
+.public-policy-card p,
+.public-policy-card li {
+  color: #40566d;
+  font-size: 15px;
+}
+.public-policy-card ul { padding-left: 22px; }
+.public-policy-card a { color: #1668b5; }
+.public-policy-footer {
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid #e1e8f0;
+  color: #718399 !important;
+  font-size: 13px !important;
+}
+@media (max-width: 680px) {
+  .public-policy-page { padding: 20px 12px; }
+  .public-policy-card { padding: 30px 22px; border-radius: 12px; }
 }
