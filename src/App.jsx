@@ -772,6 +772,10 @@ async function syncDataToBackend(data, token) {
     backendError.status = response.status;
     throw backendError;
   }
+  const syncMode = String(result?.mode || "").toLowerCase();
+  if (syncMode && !syncMode.startsWith("mysql")) {
+    throw new Error("MySQL database is unavailable. Data was not saved permanently; it will be retried when the database reconnects.");
+  }
   return result;
 }
 
@@ -5810,7 +5814,22 @@ function shouldSupplementPdfOcr(fileName, text) {
   const source = String(text ?? "");
   return sourceName.includes("tvc") ||
     /TVS\s*CREDIT/i.test(source) ||
+    isTataFinanceDocument(source) ||
+    isAuSmallFinanceDocument(source) ||
     (/Repayment\s+Schedule/i.test(source) && /Balance\s+Princip(?:al|le)/i.test(source) && /Monthly\s+Due/i.test(source));
+}
+
+function isTataFinanceDocument(value) {
+  const source = String(value ?? "").replace(/[^A-Z0-9]+/gi, " ").trim();
+  return /\bTATA\s+MOTORS\s+FINANCE(?:\s+SOLUTIONS)?\b/i.test(source) ||
+    /\bTATA\s+CAPITAL\b/i.test(source) ||
+    (/\bTATA\b/i.test(source) && /\bAMORTIZATION\s+TABLE\b/i.test(source) && /\bCONTRACT\s+NO\b/i.test(source));
+}
+
+function isAuSmallFinanceDocument(value) {
+  const source = String(value ?? "").replace(/[^A-Z0-9]+/gi, " ").trim();
+  return /\bA\s*U\s+(?:SMALL\s+)?FINANCE(?:\s+BANK)?\b/i.test(source) ||
+    /\bA\s*U\s+BANK\b/i.test(source);
 }
 
 async function extractPdfNativeText(pdfDocument) {
@@ -5961,7 +5980,7 @@ function formatOcrDate(rawDate) {
 
 function findTataSummaryValues(text) {
   const source = String(text ?? "").replace(/\s+/g, " ").trim();
-  if (!/TATA\s+MOTORS|TATA\s+CAPITAL|TATA|AMORTIZATION\s+TABLE/i.test(source) && !/Contract\s+No/i.test(source)) return {};
+  if (!isTataFinanceDocument(source) && !/Contract\s+No/i.test(source)) return {};
 
   const amountAfter = (pattern) => {
     const match = source.match(new RegExp(`${pattern}\\s*(?:\\([^)]*\\))?\\s*[:\\-]?\\s*(?:INR|RS\\.?|₹)?\\s*([\\d,]+(?:\\.\\d{1,2})?)`, "i"));
@@ -6000,7 +6019,7 @@ function findTataSummaryValues(text) {
 
 function findAuSmallFinanceSummaryValues(text) {
   const source = String(text ?? "").replace(/\s+/g, " ").trim();
-  if (!/AU\s+SMALL\s+FINANCE|AU\s+BANK/i.test(source)) return {};
+  if (!isAuSmallFinanceDocument(source)) return {};
 
   const amountAfter = (label) => source.match(new RegExp(`${label}\\s*[:\\-]?\\s*(?:INR|RS\\.?|₹)?\\s*([\\d,]+(?:\\.\\d{1,2})?)`, "i"))?.[1]?.replace(/,/g, "") ?? "";
   const periodMatch = source.match(/EMI\s+Period\s*[:\-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\s*(?:to|[-–])\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})/i);
@@ -6023,7 +6042,7 @@ function findAuSmallFinanceSummaryValues(text) {
 function parseAuScheduleRows(text) {
   const rawText = String(text ?? "");
   const normalized = rawText.replace(/\s+/g, " ");
-  if (!/AU\s+SMALL\s+FINANCE|AU\s+BANK/i.test(normalized)) return [];
+  if (!isAuSmallFinanceDocument(normalized)) return [];
 
   const parseLineValues = (installment, dueDate, valueText) => {
     const values = extractSignedMoneyLikeNumbers(valueText);
@@ -6238,7 +6257,7 @@ function parseBankPdfText(text, fileName = "") {
   const cholaSummaryValues = findCholaSummaryValues(text);
   const auRows = parseAuScheduleRows(text);
   const scheduleValues = findScheduleTableValues(text);
-  const tataScheduleDetected = scheduleValues.scheduleParsed === "yes" && /TATA\s+MOTORS|TATA\s+CAPITAL/i.test(String(text ?? ""));
+  const tataScheduleDetected = scheduleValues.scheduleParsed === "yes" && isTataFinanceDocument(text);
   const ashokLeylandSummaryValues = Object.keys(scheduleValues).length > 0 ? {} : findAshokLeylandSummaryValues(text);
   const tableValues = auRows.length > 0 ? summarizeScheduleRows(auRows, text) :
     Object.keys(scheduleValues).length > 0 ? scheduleValues :
@@ -6405,6 +6424,10 @@ function findPdfFinancier(text, fileName = "") {
   const upperText = String(text ?? "").toUpperCase();
   // The bank named inside IndoStar's repayment rows is the payment bank.
   if (isIndostarRepaymentLayout(text)) return "INDOSTAR";
+  // Normalize legal-name and OCR-spacing variants to the names used by the
+  // finance table and database filters.
+  if (isTataFinanceDocument(text)) return "TATA MOTORS FINANCE SOLUTIONS LTD";
+  if (isAuSmallFinanceDocument(text)) return "AU SMALL FINANCE";
   const knownFinanciers = [
     "BAJAJ FINANCE",
     "MAHINDRA AND MAHINDRA FINANCIAL SERVICES LIMITED",
@@ -6698,7 +6721,7 @@ function parseTvsScheduleRows(text) {
 function parseAuSmallFinanceScheduleRows(text) {
   const rawText = String(text ?? "");
   const normalized = rawText.replace(/\s+/g, " ");
-  if (!/AU\s+SMALL\s+FINANCE/i.test(normalized)) return [];
+  if (!isAuSmallFinanceDocument(normalized)) return [];
   if (!/EMI\s+No\.?/i.test(normalized) || !/Closing\s+Principal/i.test(normalized)) return [];
   const parseRow = (installment, dueDate, valueText) => {
     const values = extractSignedMoneyLikeNumbers(valueText);
@@ -6798,7 +6821,7 @@ function parseBandhanScheduleRows(text) {
 function parseTataScheduleRows(text) {
   const rawText = String(text ?? "");
   const normalized = rawText.replace(/\s+/g, " ");
-  if (!/TATA\s+MOTORS|TATA\s+CAPITAL|TATA|AMORTIZATION\s+TABLE/i.test(normalized) && !/Balance\s+Outstanding/i.test(normalized) && !/O\/?S\s+Principal/i.test(normalized)) return [];
+  if (!isTataFinanceDocument(normalized) && !/Balance\s+Outstanding/i.test(normalized) && !/O\/?S\s+Principal/i.test(normalized)) return [];
 
   const parseTataRowValues = (installment, dueDate, valueText) => {
     let values = extractSignedMoneyLikeNumbers(valueText);
@@ -7026,7 +7049,7 @@ function findScheduleTableValues(text) {
   if (ashokLeylandRows.length > 0) return summarizeScheduleRows(ashokLeylandRows, text);
   // Tata's six-column schedule also resembles generic TVS tables; select its
   // validated row parser first so the complete 33-row schedule is retained.
-  if (/TATA\s+MOTORS|TATA\s+CAPITAL/i.test(String(text ?? ""))) {
+  if (isTataFinanceDocument(text)) {
     const tataRows = parseTataScheduleRows(text);
     if (tataRows.length > 0) return summarizeScheduleRows(tataRows, text);
   }
@@ -7670,7 +7693,7 @@ function isIndostarRepaymentLayout(text) {
   return /\bINDO\s*STAR\b/i.test(source) ||
     (/REPAYMENT\s+SCHEDULE\s+FOR\s+AGREEMENT/i.test(source) &&
       /Bank\s+Name/i.test(source) && /\bMI\b/i.test(source) && /Out\s*Standing/i.test(source)) ||
-    (/EMI\s+No\.?\s+Due\s+Date\s+EMI\s+Amount\s+Principal\s+Interest\s+Balance\s+Outstanding/i.test(source) && !/TATA\s+MOTORS|TATA\s+CAPITAL/i.test(source));
+    (/EMI\s+No\.?\s+Due\s+Date\s+EMI\s+Amount\s+Principal\s+Interest\s+Balance\s+Outstanding/i.test(source) && !isTataFinanceDocument(source));
 }
 
 function isIndostarScheduleFormat(text) {
@@ -8122,7 +8145,7 @@ function findPdfRate(text) {
     const irrValues = [...source.slice(irrIndex).matchAll(/(?<![\d.])\d+\.\d{3,}(?![\d.])/g)]
       .map((match) => match[0])
       .filter((value) => toNumber(value) > 0 && toNumber(value) <= 40);
-    if (irrValues.length > 0 && /TATA\s+MOTORS\s+FINANCE/i.test(source)) return irrValues[irrValues.length - 1];
+    if (irrValues.length > 0 && isTataFinanceDocument(source)) return irrValues[irrValues.length - 1];
   }
   const kfsRate = source.match(/Rate\s+of\s+Interest\s*\(\s*Sl\s*No\.\s*13[^)]*\)\s*([0-9]+(?:\.[0-9]+)?)/i);
   if (kfsRate && toNumber(kfsRate[1]) > 0) return kfsRate[1];
