@@ -35,6 +35,16 @@ const API_BASE = getApiBase();
 const LOGIN_KEY = "kuber-admin-session";
 // v2 prevents an old/incompatible browser sync queue from blocking the current database data.
 const PENDING_SYNC_KEY = "kuber-finance-pending-sync-v2";
+// Keep OCR language data on the same deployment as the app. This avoids
+// browser/CDN restrictions that can make PDF imports fail only in production.
+const TESSERACT_LANG_PATH = `${import.meta.env.BASE_URL}eng`;
+
+function createFinanceOcrWorker() {
+  return createWorker("eng", 1, {
+    langPath: TESSERACT_LANG_PATH,
+    gzip: false
+  });
+}
 
 function loadSession() {
   try {
@@ -1754,7 +1764,9 @@ function AdminApp({ session, onLogout }) {
       }), rowUpdated ? `${mergedRow.loanAccount} row updated` : `${mergedRow.loanAccount} PDF data updated`);
     } catch (error) {
       setSaveStatus("Error");
-      setToast(error.message || "PDF import failed");
+      console.error("PDF import failed", error);
+      const detail = String(error?.message || error || "").trim();
+      setToast(detail ? `PDF import failed: ${detail.slice(0, 180)}` : "PDF import failed. Please try a readable PDF or image.");
     } finally {
       event.target.value = "";
     }
@@ -5756,7 +5768,7 @@ function formatExcelDate(value) {
 }
 
 async function ocrImageFile(file) {
-  const worker = await createWorker("eng");
+  const worker = await createFinanceOcrWorker();
   try {
     await worker.setParameters({ preserve_interword_spaces: "1", tessedit_pageseg_mode: "6" });
     const { data: psm6 } = await worker.recognize(file);
@@ -5814,8 +5826,6 @@ function shouldSupplementPdfOcr(fileName, text) {
   const source = String(text ?? "");
   return sourceName.includes("tvc") ||
     /TVS\s*CREDIT/i.test(source) ||
-    isTataFinanceDocument(source) ||
-    isAuSmallFinanceDocument(source) ||
     (/Repayment\s+Schedule/i.test(source) && /Balance\s+Princip(?:al|le)/i.test(source) && /Monthly\s+Due/i.test(source));
 }
 
@@ -5891,7 +5901,7 @@ async function extractPdfNativeText(pdfDocument) {
 }
 
 async function ocrPdfPages(pdfDocument) {
-  const worker = await createWorker("eng");
+  const worker = await createFinanceOcrWorker();
   await worker.setParameters({
     preserve_interword_spaces: "1",
     tessedit_pageseg_mode: "6"
