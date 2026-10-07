@@ -5926,7 +5926,13 @@ async function ocrPdfPages(pdfDocument) {
   try {
     for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
       const page = await pdfDocument.getPage(pageNumber);
-      const viewport = page.getViewport({ scale: 4.5 });
+      // Very large scans can create canvases that Tesseract/Leptonica cannot
+      // read in production browsers. Keep enough resolution for table OCR,
+      // but cap the rendered page size to a safe browser limit.
+      const baseViewport = page.getViewport({ scale: 1 });
+      const maxPageDimension = 3200;
+      const renderScale = Math.min(4.5, maxPageDimension / Math.max(baseViewport.width, baseViewport.height));
+      const viewport = page.getViewport({ scale: Math.max(renderScale, 1.5) });
       const canvas = window.document.createElement("canvas");
       canvas.width = Math.floor(viewport.width);
       canvas.height = Math.floor(viewport.height);
@@ -5934,30 +5940,59 @@ async function ocrPdfPages(pdfDocument) {
       context.fillStyle = "#ffffff";
       context.fillRect(0, 0, canvas.width, canvas.height);
       await page.render({ canvasContext: context, viewport }).promise;
-      const cleanCanvas = cloneCanvas(canvas);
-      const sharpenedCanvas = cloneCanvas(canvas);
+      const safeCanvas = limitOcrCanvas(canvas, maxPageDimension);
+      const cleanCanvas = cloneCanvas(safeCanvas);
+      const sharpenedCanvas = cloneCanvas(safeCanvas);
       sharpenCanvasForOcr(sharpenedCanvas);
       await worker.setParameters({ tessedit_pageseg_mode: "6" });
-      const { data } = await worker.recognize(cleanCanvas);
+      const { data } = await recognizeOcrCanvas(worker, cleanCanvas);
       await worker.setParameters({ tessedit_pageseg_mode: "11" });
-      const { data: sparseData } = await worker.recognize(cleanCanvas);
+      const { data: sparseData } = await recognizeOcrCanvas(worker, cleanCanvas);
       // PSM 4 is better for scanned repayment tables with fixed columns;
       // PSM 6/11 remain useful for the document summary and labels.
       await worker.setParameters({ tessedit_pageseg_mode: "4" });
-      const { data: columnData } = await worker.recognize(sharpenedCanvas);
+      const { data: columnData } = await recognizeOcrCanvas(worker, sharpenedCanvas);
       // TVS repayment tables use fine grid lines; a second table-oriented
       // pass recovers rows that PSM 6/11 often merges into the borders.
       await worker.setParameters({
         tessedit_pageseg_mode: "6",
         tessedit_char_whitelist: "0123456789/-.,%ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
       });
-      const { data: numericTableData } = await worker.recognize(sharpenedCanvas);
+      const { data: numericTableData } = await recognizeOcrCanvas(worker, sharpenedCanvas);
       texts.push(data.text, sparseData.text, columnData.text, numericTableData.text);
     }
   } finally {
     await worker.terminate();
   }
   return normalizePdfText(texts.join("\n"));
+}
+
+async function recognizeOcrCanvas(worker, canvas) {
+  try {
+    return await worker.recognize(canvas);
+  } catch (firstError) {
+    // Some Hostinger/browser combinations fail while serializing a canvas
+    // directly for the worker. A PNG data URL is a compatible fallback.
+    try {
+      return await worker.recognize(canvas.toDataURL("image/png"));
+    } catch {
+      throw firstError;
+    }
+  }
+}
+
+function limitOcrCanvas(canvas, maxDimension = 3200) {
+  const largestSide = Math.max(canvas.width, canvas.height);
+  if (!largestSide || largestSide <= maxDimension) return canvas;
+  const scale = maxDimension / largestSide;
+  const resized = window.document.createElement("canvas");
+  resized.width = Math.max(1, Math.floor(canvas.width * scale));
+  resized.height = Math.max(1, Math.floor(canvas.height * scale));
+  const context = resized.getContext("2d", { willReadFrequently: true });
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, resized.width, resized.height);
+  context.drawImage(canvas, 0, 0, resized.width, resized.height);
+  return resized;
 }
 
 function cloneCanvas(canvas) {
