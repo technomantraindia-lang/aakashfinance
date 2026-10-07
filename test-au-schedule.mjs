@@ -48,4 +48,8 @@ assert.equal(parsed.emiEnd, "10-08-2029");
 assert.equal(parsed.emiSchedule.length, 3);
 assert.equal(parsed.scheduleParsed, "yes");
 
+const badClosingText = text.replace("2,538,839", "25,653,712");
+const sanitized = context.normalizePdfFinanceRow(context.parseBankPdfText(badClosingText, "au-repayment-schedule.pdf"));
+assert.equal(sanitized.bankClosingPrincipal, "");
+
 console.log("AU Small Finance repayment schedule parser passed");

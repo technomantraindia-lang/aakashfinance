@@ -6289,8 +6289,11 @@ function parseBankPdfText(text, fileName = "") {
 
   const finalLoanAmount = tvsSummaryValues.loanAmount || indostarSummaryValues.loanAmount || auSummaryValues.loanAmount || cholaSummaryValues.loanAmount || tataSummaryValues.loanAmount || (preferScheduleAmounts ? tableValues.loanAmount : explicitLoanAmount || exactLoanAmount || tableValues.loanAmount);
   const finalEmiAmount = tvsSummaryValues.emiAmount || indostarSummaryValues.emiAmount || auSummaryValues.emiAmount || cholaSummaryValues.emiAmount || tataSummaryValues.emiAmount || explicitEmiAmount || tableValues.emiAmount || indostarEmiAmount;
+  const rawScheduleClosingPrincipal = scheduleValues.scheduleParsed === "yes" ? tableValues.bankClosingPrincipal : "";
   const finalClosingPrincipal = scheduleValues.scheduleParsed === "yes"
-    ? tableValues.bankClosingPrincipal
+    ? plausibleBankClosingPrincipal(rawScheduleClosingPrincipal, finalLoanAmount)
+      ? rawScheduleClosingPrincipal
+      : ""
     : (cholaSummaryValues.bankClosingPrincipal || tataSummaryValues.bankClosingPrincipal || (auRows.length > 0 ? tableValues.bankClosingPrincipal : (explicitClosingPrincipal || tableValues.bankClosingPrincipal)));
 
   const tataFieldsTrusted = Boolean(
@@ -8055,6 +8058,16 @@ function mostCommonAmount(values) {
   });
   return [...counts.entries()]
     .sort((first, second) => second[1] - first[1] || Number(second[0]) - Number(first[0]))[0]?.[0] ?? "";
+}
+
+function plausibleBankClosingPrincipal(value, loanAmount) {
+  const closing = toNumber(value);
+  const loan = toNumber(loanAmount);
+  if (closing < 0) return false;
+  if (!closing || !loan) return true;
+  // OCR sometimes joins Indian comma groups or picks another numeric column
+  // (for example 25,653,712 for a 26-lakh loan). Never persist that as POS.
+  return closing <= loan * 1.5;
 }
 
 function extractMoneyLikeNumbers(value) {
