@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MarketplaceChat, ChatRequestButton, useMarketplaceChat } from "./MarketplaceChat";
 import loginBackground from "./assets/background.png";
-import myFleetLogo from "../../assets/My_Fleet_512x512.png";
+import myFleetLogo from "./assets/My_Fleet_512x512.png";
 import * as pdfjsLib from "pdfjs-dist";
 import { createWorker } from "tesseract.js";
 import * as XLSX from "xlsx";
