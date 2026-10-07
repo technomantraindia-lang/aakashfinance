@@ -54,5 +54,15 @@ assert.equal(sanitized.bankClosingPrincipal, "");
 const sanitizedForMerge = context.sanitizePdfRowForMerge(sanitized);
 assert.ok(Object.prototype.hasOwnProperty.call(sanitizedForMerge, "bankClosingPrincipal"));
 assert.equal(sanitizedForMerge.bankClosingPrincipal, "");
+const recovered = context.autoClosingPrincipal({
+  ...sanitizedForMerge,
+  loanAmount: "2600000",
+  emiAmount: "88244",
+  interestRate: "13.51",
+  tenure: "36",
+  paidEmi: "1",
+  emiSchedule: [{ status: "Paid", principal: 46288 }]
+});
+assert.equal(recovered, 2553712);
 
 console.log("AU Small Finance repayment schedule parser passed");
