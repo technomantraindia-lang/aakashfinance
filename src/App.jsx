@@ -5840,11 +5840,21 @@ async function extractPdfTextWithOcr(file) {
     return ocrImageFile(file);
   }
   let pdfDocument;
+  let buffer;
   try {
-    const buffer = await file.arrayBuffer();
+    buffer = await file.arrayBuffer();
     pdfDocument = await pdfjsLib.getDocument({ data: buffer }).promise;
-  } catch {
-    return ocrImageFile(file);
+  } catch (firstError) {
+    // Some shared hosts fail to start the PDF.js worker even though the PDF
+    // itself is valid. Retry in the main thread before reporting the import
+    // as failed; never pass a PDF byte stream to Tesseract as an image.
+    try {
+      if (!buffer) buffer = await file.arrayBuffer();
+      pdfDocument = await pdfjsLib.getDocument({ data: buffer, disableWorker: true }).promise;
+    } catch (secondError) {
+      console.error("PDF.js could not open PDF", firstError, secondError);
+      throw new Error("PDF could not be opened in this browser. Please re-save the PDF or upload a clear image.");
+    }
   }
   // Step 1: Try native pdfjs text extraction first (works great for digital PDFs)
   const nativeText = await extractPdfNativeText(pdfDocument);
