@@ -670,6 +670,25 @@ function financeRecordKeys(clientId, record) {
   return keys.length ? keys : [`${clientKey}:id:${record?.id ?? Math.random()}`];
 }
 
+function dueTaskDateKey(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const dateOnly = text.match(/^(\d{4}-\d{2}-\d{2})$/);
+  if (dateOnly) return dateOnly[1];
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return text.slice(0, 10);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(parsed).reduce((result, part) => {
+    result[part.type] = part.value;
+    return result;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
 function deduplicateFinanceRecords(source) {
   const data = source ?? {};
   const vehicleKeyToId = new Map();
@@ -696,7 +715,7 @@ function deduplicateFinanceRecords(source) {
   const dueTasks = [];
   (data.dueTasks ?? []).forEach((task) => {
     const vehicleId = vehicleIdMap.get(task.vehicleId) ?? task.vehicleId;
-    const key = `${vehicleId}:${task.type ?? "EMI"}:${task.dueDate ?? task.id}`;
+    const key = `${vehicleId}:${task.type ?? "EMI"}:${dueTaskDateKey(task.dueDate) || task.id}`;
     const existingIndex = dueKeyToId.has(key) ? dueTasks.findIndex((item) => item.id === dueKeyToId.get(key)) : -1;
     if (existingIndex < 0) {
       const normalizedTask = { ...task, vehicleId };
@@ -1705,8 +1724,9 @@ function AdminApp({ session, onLogout }) {
       const pdfDueTask = nextVehicle
         ? buildPdfEmiDueTask(mergedRow, clientId, nextVehicle.id, nextVehicle.callerId || client?.callerId || "")
         : null;
-      const existingEmiDue = nextVehicle
-        ? data.dueTasks.find((task) => task.vehicleId === nextVehicle.id && task.type === "EMI" && task.status !== "Closed")
+      const existingEmiDue = nextVehicle && pdfDueTask
+        ? data.dueTasks.find((task) => task.vehicleId === nextVehicle.id && task.type === "EMI" && task.status !== "Closed" && dueTaskDateKey(task.dueDate) === dueTaskDateKey(pdfDueTask.dueDate))
+          || data.dueTasks.find((task) => task.vehicleId === nextVehicle.id && task.type === "EMI" && task.status !== "Closed" && String(task.id).startsWith("d-pdf-"))
         : null;
       const updatedDueTasks = pdfDueTask
         ? existingEmiDue
@@ -5587,7 +5607,9 @@ function buildPdfEmiDueTask(row, clientId, vehicleId, callerId = "") {
   today.setHours(0, 0, 0, 0);
   const days = Math.round((date.getTime() - today.getTime()) / 86400000);
   return {
-    id: `d-pdf-${String(vehicleId).replace(/[^a-z0-9]/gi, "")}-${dueDate}`,
+    // Match the backend monitor's deterministic key so PDF import and
+    // scheduled monitoring upsert one EMI task instead of creating two.
+    id: `auto-emi-${String(vehicleId).replace(/[^a-z0-9]/gi, "")}-${dueDate}`,
     clientId,
     vehicleId,
     type: "EMI",
