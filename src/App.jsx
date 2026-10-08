@@ -5849,8 +5849,14 @@ async function extractPdfTextWithOcr(file) {
     // itself is valid. Retry in the main thread before reporting the import
     // as failed; never pass a PDF byte stream to Tesseract as an image.
     try {
-      if (!buffer) buffer = await file.arrayBuffer();
-      pdfDocument = await pdfjsLib.getDocument({ data: buffer, disableWorker: true }).promise;
+      // PDF.js may transfer/detach the original ArrayBuffer while starting
+      // the worker. Always read the File again for the retry; reusing the
+      // truthy-but-detached buffer makes even a valid PDF fail a second time.
+      const retryBuffer = await file.arrayBuffer();
+      pdfDocument = await pdfjsLib.getDocument({
+        data: new Uint8Array(retryBuffer),
+        disableWorker: true
+      }).promise;
     } catch (secondError) {
       console.error("PDF.js could not open PDF", firstError, secondError);
       throw new Error("PDF could not be opened in this browser. Please re-save the PDF or upload a clear image.");
