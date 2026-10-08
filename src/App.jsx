@@ -689,6 +689,20 @@ function dueTaskDateKey(value) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
+function latestDueTasks(tasks) {
+  const latestByVehicle = new Map();
+  (tasks ?? []).filter((task) => task.status !== "Closed").forEach((task) => {
+    const key = `${task.vehicleId ?? ""}:${task.type ?? "EMI"}`;
+    const current = latestByVehicle.get(key);
+    if (!current || dueTaskDateKey(task.dueDate) > dueTaskDateKey(current.dueDate)) {
+      latestByVehicle.set(key, task);
+    }
+  });
+  return [...latestByVehicle.values()].sort((first, second) =>
+    dueTaskDateKey(second.dueDate).localeCompare(dueTaskDateKey(first.dueDate))
+  );
+}
+
 function deduplicateFinanceRecords(source) {
   const data = source ?? {};
   const vehicleKeyToId = new Map();
@@ -2450,7 +2464,9 @@ function ClientProfile({ data, clientId, backToClients, importClientExcel, impor
   // Manual entries are real vehicles even when their registration text contains "body".
   const visibleVehicles = clientVehicles;
   const clientDues = data.dueTasks.filter((task) => task.clientId === client.id);
-  const visibleDues = clientDues;
+  // Keep old EMI rows in the database for history, but show only the latest
+  // open due for each vehicle/type in the client profile.
+  const visibleDues = latestDueTasks(clientDues);
   const clientImports = (data.clientImports ?? []).filter((item) => item.clientId === client.id);
   const importedAssets = clientImports.flatMap((item) => item.rows.map((row) => ({ ...row, importFile: item.fileName, importedAt: item.importedAt })));
   const validationRows = importedAssets.filter((row) => Array.isArray(row.validationIssues));
