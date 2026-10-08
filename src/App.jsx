@@ -6023,8 +6023,13 @@ async function recognizeOcrCanvas(worker, canvas) {
     // directly for the worker. A PNG data URL is a compatible fallback.
     try {
       return await worker.recognize(canvas.toDataURL("image/png"));
-    } catch {
-      throw firstError;
+    } catch (pngError) {
+      // JPEG is smaller and avoids decoder limits on very detailed scans.
+      try {
+        return await worker.recognize(canvas.toDataURL("image/jpeg", 0.85));
+      } catch {
+        throw firstError || pngError;
+      }
     }
   }
 }
