@@ -1702,18 +1702,23 @@ function AdminApp({ session, onLogout }) {
         inferProfileAgreementFromPdf(pdfRow, importedAssets);
       if (profileAgreement) pdfRow.loanAccount = profileAgreement;
 
-      const isPdfRowMatch = (row) => (
-        agreementMatches(row.loanAccount, pdfRow.loanAccount) ||
-        (pdfRow.regNo && normalizeRegNo(baseRegNo(row.regNo)) === normalizeRegNo(baseRegNo(pdfRow.regNo)))
+      const isPdfAgreementMatch = (row) => agreementMatches(row.loanAccount, pdfRow.loanAccount);
+      const isPdfRegMatch = (row) => Boolean(
+        pdfRow.regNo && normalizeRegNo(baseRegNo(row.regNo)) === normalizeRegNo(baseRegNo(pdfRow.regNo))
       );
-      const matchedRow = importedAssets.find(isPdfRowMatch) || {};
+      // Truck and BODY trailer intentionally share a registration number. Once
+      // the PDF exposes/inherits a Loan Acc. No., never let the registration
+      // fallback redirect the trailer's finance data into the truck row.
+      const matchedRow = importedAssets.find(isPdfAgreementMatch) ||
+        importedAssets.find(isPdfRegMatch) || {};
 
-      const matchingVehicle = data.vehicles.find((vehicle) => (
-        vehicle.clientId === clientId && (
-          agreementMatches(vehicle.loanAccount, pdfRow.loanAccount) ||
-          (pdfRow.regNo && normalizeRegNo(baseRegNo(vehicle.regNo)) === normalizeRegNo(baseRegNo(pdfRow.regNo)))
-        )
-      ));
+      const clientVehicles = data.vehicles.filter((vehicle) => vehicle.clientId === clientId);
+      // BODY loans do not have a separate backend vehicle record. If the PDF
+      // has a loan account, only match that exact account; falling back to the
+      // shared registration would incorrectly merge BODY data into the truck.
+      const matchingVehicle = isValidAgreementValue(pdfRow.loanAccount)
+        ? clientVehicles.find(isPdfAgreementMatch)
+        : clientVehicles.find(isPdfRegMatch);
 
       if (!isValidAgreementValue(pdfRow.loanAccount)) {
         pdfRow.loanAccount = profileAgreement || matchedRow?.loanAccount || matchingVehicle?.loanAccount || pdfRow.regNo || `AGMT-${Date.now().toString().slice(-6)}`;
@@ -1731,9 +1736,12 @@ function AdminApp({ session, onLogout }) {
       };
 
       const vehicleId = matchingVehicle?.id || `v-pdf-${Date.now()}`;
+      const bodyPdfImport = isBodyRow(matchedRow) || isBodyRow(mergedRow);
       const nextVehicle = matchingVehicle
         ? mergePdfIntoVehicle(matchingVehicle, { ...mergedRow, regNo: defaultRegNo })
-        : excelRowToVehicle({ ...mergedRow, regNo: defaultRegNo }, clientId, vehicleId);
+        : bodyPdfImport
+          ? null
+          : excelRowToVehicle({ ...mergedRow, regNo: defaultRegNo }, clientId, vehicleId);
 
       const pdfDueTask = nextVehicle
         ? buildPdfEmiDueTask(mergedRow, clientId, nextVehicle.id, nextVehicle.callerId || client?.callerId || "")
@@ -1754,8 +1762,9 @@ function AdminApp({ session, onLogout }) {
         return {
           ...item,
           rows: (item.rows ?? []).map((row) => {
-            const isMatch = agreementMatches(row.loanAccount, pdfRow.loanAccount) ||
-              (pdfRow.regNo && normalizeRegNo(baseRegNo(row.regNo)) === normalizeRegNo(baseRegNo(pdfRow.regNo)));
+            const isMatch = isValidAgreementValue(pdfRow.loanAccount)
+              ? agreementMatches(row.loanAccount, pdfRow.loanAccount)
+              : isPdfRegMatch(row);
             if (!isMatch) return row;
             rowUpdated = true;
             return {
@@ -1781,7 +1790,9 @@ function AdminApp({ session, onLogout }) {
         clientImports: updatedClientImports,
         vehicles: matchingVehicle
           ? data.vehicles.map((vehicle) => vehicle.id === nextVehicle.id ? nextVehicle : vehicle)
-          : [nextVehicle, ...data.vehicles],
+          : nextVehicle
+            ? [nextVehicle, ...data.vehicles]
+            : data.vehicles,
         dueTasks: updatedDueTasks
       };
       const scheduleMessage = nextVehicle?.emiSchedule?.length
@@ -2468,7 +2479,9 @@ function ClientProfile({ data, clientId, backToClients, importClientExcel, impor
   // open due for each vehicle/type in the client profile.
   const visibleDues = latestDueTasks(clientDues);
   const clientImports = (data.clientImports ?? []).filter((item) => item.clientId === client.id);
-  const importedAssets = clientImports.flatMap((item) => item.rows.map((row) => ({ ...row, importFile: item.fileName, importedAt: item.importedAt })));
+  const importedAssets = canonicalImportedAssets(
+    clientImports.flatMap((item) => item.rows.map((row) => ({ ...row, importFile: item.fileName, importedAt: item.importedAt })))
+  );
   const validationRows = importedAssets.filter((row) => Array.isArray(row.validationIssues));
   const invalidImportRows = validationRows.filter((row) => row.validationStatus === "Invalid");
   const caller = users.find((user) => user.id === client.callerId);
@@ -3959,9 +3972,11 @@ function CustomerPortal({ session, onLogout }) {
     [data, myVehicles]
   );
   const myImportedAssets = useMemo(
-    () => (data.clientImports ?? [])
-      .filter((item) => item.clientId === customerClientId)
-      .flatMap((item) => (item.rows ?? []).map((row) => ({ ...row, importFile: item.fileName, importedAt: item.importedAt }))),
+    () => canonicalImportedAssets(
+      (data.clientImports ?? [])
+        .filter((item) => item.clientId === customerClientId)
+        .flatMap((item) => (item.rows ?? []).map((row) => ({ ...row, importFile: item.fileName, importedAt: item.importedAt })))
+    ),
     [data, customerClientId]
   );
 
@@ -5186,7 +5201,6 @@ function buildSmartAlerts(data, includeAll = false) {
 
 function autoClosingPrincipal(row) {
   if (!row) return 0;
-  if (isClosedFinanceRow(row)) return 0;
   if (row.bankClosingPrincipalUnknown === true) return 0;
   const bankClosing = toNumber(row.bankClosingPrincipal ?? row.bank_closing_principal);
   const savedClosing = toNumber(row.closingPrincipal ?? row.closing_principal);
@@ -5196,13 +5210,19 @@ function autoClosingPrincipal(row) {
   const paidEmi = toNumber(row.paidEmi);
   const enteredRate = String(row.interestRate ?? "").trim();
   const interestRate = enteredRate ? toNumber(enteredRate) : BANK_RELEASE_RATE_PERCENT;
-  const paidCount = effectivePaidEmi(row);
-  const snapshotClosing = bankClosing || savedClosing;
-  if (snapshotClosing > 0) {
+  // A closing value read from the bank/PDF is authoritative, even when the
+  // text also contains a CLOSED/settled label. Only fall back to zero when
+  // there is no explicit closing value to display.
+  if (bankClosing > 0 || savedClosing > 0) {
+    const paidCount = effectivePaidEmi(row);
+    const snapshotClosing = bankClosing || savedClosing;
     const extraPaidCount = Math.max(paidCount - Math.min(Math.max(Math.round(paidEmi), 0), tenure || paidCount), 0);
-    if (extraPaidCount <= 0 || emiAmount <= 0) return snapshotClosing;
-    return amortizeClosingPrincipal(snapshotClosing, emiAmount, interestRate, extraPaidCount);
+    return extraPaidCount > 0 && emiAmount > 0
+      ? amortizeClosingPrincipal(snapshotClosing, emiAmount, interestRate, extraPaidCount)
+      : snapshotClosing;
   }
+  if (isClosedFinanceRow(row)) return 0;
+  const paidCount = effectivePaidEmi(row);
   // If the bank closing column was unreadable, use the validated schedule's
   // principal breakup instead of carrying forward an older/stale POS value.
   // This is exact for AU schedules: loan amount minus principal paid in all
@@ -5232,7 +5252,10 @@ function amortizeClosingPrincipal(openingPrincipal, emiAmount, interestRate, pai
 function formatAutoClosingPrincipal(row) {
   if (isClosedFinanceRow(row)) return "0";
   const closing = autoClosingPrincipal(row);
-  return closing > 0 ? new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(closing) : "-";
+  if (closing > 0) return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(closing);
+  const hasFinanceInputs = toNumber(row?.loanAmount) > 0 &&
+    toNumber(row?.emiAmount) > 0 && toNumber(row?.tenure) > 0;
+  return hasFinanceInputs ? "0" : "-";
 }
 
 function effectivePaidEmi(row, asOf = new Date()) {
@@ -5382,6 +5405,27 @@ function sanitizePdfRowForMerge(row) {
 
 function mergePdfFinanceAsset(existing = {}, incoming = {}) {
   const next = { ...existing, ...incoming };
+  const existingLoanAmount = toNumber(existing.loanAmount);
+  const existingEmiAmount = toNumber(existing.emiAmount);
+  const incomingLoanAmount = toNumber(incoming.loanAmount);
+  const incomingEmiAmount = toNumber(incoming.emiAmount);
+  // OCR can read the EMI label as the loan amount and the loan amount as the
+  // EMI. Preserve the validated Excel pair when the incoming pair is clearly
+  // inverted; otherwise the closing calculation becomes zero or nonsensical.
+  if (existingLoanAmount > 0 && existingEmiAmount > 0 &&
+      incomingLoanAmount > 0 && incomingEmiAmount > 0 &&
+      incomingLoanAmount < incomingEmiAmount && existingLoanAmount >= existingEmiAmount) {
+    next.loanAmount = existing.loanAmount;
+    next.emiAmount = existing.emiAmount;
+  }
+  // A successful PDF schedule is authoritative. Clear any flag left by an
+  // earlier failed import and copy the parsed POS into the visible closing
+  // field as well as the bank-specific field.
+  if (toNumber(incoming.bankClosingPrincipal) > 0) {
+    next.bankClosingPrincipalUnknown = false;
+    next.bankClosingPrincipal = incoming.bankClosingPrincipal;
+    next.closingPrincipal = incoming.bankClosingPrincipal;
+  }
   // A finance import updates the loan; keep the user's saved owner and plate.
   for (const key of ["owner", "regNo"]) {
     if (String(existing[key] ?? "").trim() && existing[key] !== "-") next[key] = existing[key];
@@ -5446,6 +5490,36 @@ function isBodyRegNo(value) {
 
 function isBodyRow(row) {
   return isBodyRegNo(row?.regNo);
+}
+
+function importedAssetQuality(row = {}) {
+  const loanAmount = toNumber(row.loanAmount);
+  const emiAmount = toNumber(row.emiAmount);
+  const tenure = toNumber(row.tenure);
+  const bankClosing = toNumber(row.bankClosingPrincipal ?? row.bank_closing_principal);
+  const savedClosing = toNumber(row.closingPrincipal ?? row.closing_principal);
+  const hasSaneFinancePair = loanAmount > 0 && emiAmount > 0 && tenure > 0 && loanAmount >= emiAmount;
+  const hasExplicitClosing = bankClosing > 0 || savedClosing > 0;
+  // A valid finance pair is more trustworthy than a newer OCR row with
+  // shifted Loan/EMI columns. A parsed closing amount gets the top priority.
+  return (hasSaneFinancePair ? 100 : 0) +
+    (hasExplicitClosing ? 50 : 0) +
+    (row.pdfImportedAt ? 5 : 0);
+}
+
+function canonicalImportedAssets(assets = []) {
+  const selected = new Map();
+  (assets ?? []).forEach((asset) => {
+    const type = isBodyRow(asset) ? "body" : "vehicle";
+    const loan = normalizeAgreement(asset.loanAccount);
+    const reg = normalizeRegNo(baseRegNo(asset.regNo));
+    const key = `${type}:${loan || reg || String(asset.id || "row")}`;
+    const previous = selected.get(key);
+    if (!previous || importedAssetQuality(asset) > importedAssetQuality(previous)) {
+      selected.set(key, asset);
+    }
+  });
+  return [...selected.values()];
 }
 
 function baseRegNo(value) {
@@ -5695,23 +5769,26 @@ function validateClientExcelRows(rows, data, clientId) {
     if (!hasValue(row.owner)) issues.push("Owner is required");
 
     const financeStatus = String(row.financeStatus || "").trim().toUpperCase().replace(/\s+/g, "");
-    const hasFinanceValues = [row.financier, row.loanAccount, row.loanAmount, row.emiAmount, row.tenure, row.paidEmi, row.emiStart, row.emiEnd]
-      .some(hasValue);
     const isLoanFree = financeStatus === "FREE" || financeStatus === "LOANFREE" || financeStatus === "N/A";
     if (hasValue(row.financeStatus) && !["FIN", "FINANCED", "FREE", "LOANFREE", "N/A"].includes(financeStatus)) {
       issues.push("Finance status must be FIN or FREE");
     }
-    if (hasFinanceValues && !isLoanFree) {
-      if (!hasValue(row.financier)) issues.push("Financier is required for a financed row");
-      if (!hasValue(row.loanAccount)) issues.push("Loan account is required for a financed row");
+    if (!isLoanFree) {
+      // Excel is allowed to contain only the vehicle identity. Loan account,
+      // amount, EMI, tenure, paid EMI and dates can all be supplied later by
+      // the bank PDF. Validate each value only when it is present.
       if (hasValue(row.loanAccount) && !isValidAgreementValue(row.loanAccount)) issues.push("Loan account is invalid");
-      if (toNumber(row.loanAmount) <= 0) issues.push("Loan amount must be greater than zero");
-      if (toNumber(row.emiAmount) <= 0) issues.push("EMI amount must be greater than zero");
-      if (!Number.isInteger(toNumber(row.tenure)) || toNumber(row.tenure) <= 0) issues.push("Tenure must be a positive whole number");
-      if (!Number.isInteger(toNumber(row.paidEmi)) || toNumber(row.paidEmi) < 0 || toNumber(row.paidEmi) > toNumber(row.tenure)) {
-        issues.push("Paid EMI must be between zero and tenure");
+      if (hasValue(row.loanAmount) && toNumber(row.loanAmount) <= 0) issues.push("Loan amount must be greater than zero");
+      if (hasValue(row.emiAmount) && toNumber(row.emiAmount) <= 0) issues.push("EMI amount must be greater than zero");
+      if (hasValue(row.tenure) && (!Number.isInteger(toNumber(row.tenure)) || toNumber(row.tenure) <= 0)) {
+        issues.push("Tenure must be a positive whole number");
       }
-      if (!hasValue(row.emiStart) || !hasValue(row.emiEnd)) issues.push("EMI start and end dates are required");
+      if (hasValue(row.paidEmi) && (!Number.isInteger(toNumber(row.paidEmi)) || toNumber(row.paidEmi) < 0)) {
+        issues.push("Paid EMI must be zero or greater");
+      }
+      if (hasValue(row.paidEmi) && hasValue(row.tenure) && toNumber(row.paidEmi) > toNumber(row.tenure)) {
+        issues.push("Paid EMI cannot be greater than tenure");
+      }
       addDateIssue(issues, "EMI start date", row.emiStart);
       addDateIssue(issues, "EMI end date", row.emiEnd);
       if (parseDisplayDate(row.emiStart) && parseDisplayDate(row.emiEnd) && parseDisplayDate(row.emiEnd) < parseDisplayDate(row.emiStart)) {
@@ -5815,6 +5892,12 @@ function formatExcelDate(value) {
   const text = String(value ?? "").trim();
   const serial = Number(text);
   if (!text) return "";
+  const slashDate = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (slashDate) {
+    const [, month, day, rawYear] = slashDate;
+    const year = rawYear.length === 2 ? `20${rawYear}` : rawYear;
+    return `${day.padStart(2, "0")}-${month.padStart(2, "0")}-${year}`;
+  }
   if (!Number.isFinite(serial) || serial < 25000) return formatDisplayDate(text);
   const date = new Date(Math.round((serial - 25569) * 86400 * 1000));
   return formatDisplayDate(date.toISOString().slice(0, 10));
@@ -6375,7 +6458,12 @@ function parseBankPdfText(text, fileName = "") {
   const tataSummaryValues = findTataSummaryValues(text);
   const cholaSummaryValues = findCholaSummaryValues(text);
   const auRows = parseAuScheduleRows(text);
-  const scheduleValues = findScheduleTableValues(text);
+  const axisRows = parseAxisScheduleRows(text);
+  // Do not allow a generic bank parser to reinterpret Axis columns. Its
+  // opening/EMI/principal/interest/closing order is different from TVS.
+  const scheduleValues = axisRows.length > 0
+    ? summarizeScheduleRows(axisRows, text)
+    : findScheduleTableValues(text);
   const tataScheduleDetected = scheduleValues.scheduleParsed === "yes" && isTataFinanceDocument(text);
   const ashokLeylandSummaryValues = Object.keys(scheduleValues).length > 0 ? {} : findAshokLeylandSummaryValues(text);
   const tableValues = auRows.length > 0 ? summarizeScheduleRows(auRows, text) :
@@ -6390,7 +6478,7 @@ function parseBankPdfText(text, fileName = "") {
   const exactLoanAmount = findPdfExactAmount(text, ["Amount Financed", "Loan Amount", "Financed Amount", "Total Loan Sanctioned", "Total Loan Disbursed", "Asset Cost", "Net Disbursement", "Sanctioned Amount", "Finance Amount"]);
   const explicitLoanAmount = findPdfAmount(text, ["Amount Financed", "Loan Amount", "Financed Amount", "Total Loan Sanctioned", "Total Loan Disbursed", "Asset Cost", "Net Disbursement", "Sanctioned Amount", "Finance Amount"], { positive: true, min: 1000 });
   const explicitEmiAmount = findPdfAmount(text, ["EMI Amount", "Installment Amount", "Instalment Amount", "Monthly Installment", "Monthly Instalment", "Repayment Amount", "EMI", "Instl Amt", "Instl Amount"], { positive: true, min: 100 });
-  const explicitClosingPrincipal = findPdfAmount(text, ["Closing Principal", "Principal Outstanding", "Outstanding Principal", "Current POS", "POS", "Foreclosure Amount", "Foreclosure Value", "Closure Amount", "Amount to be paid", "Payable Amount", "Balance Outstanding"], { positive: true, min: 1000 });
+  const explicitClosingPrincipal = findPdfAmount(text, ["Closing Principal", "Closing Amount", "Closing Balance", "Principal Outstanding", "Outstanding Principal", "Outstanding Amount", "Total Outstanding", "Current POS", "POS", "Foreclosure Amount", "Foreclosure Value", "Closure Amount", "Settlement Amount", "Amount to be paid", "Payable Amount", "Net Payable Amount", "Balance Outstanding", "Balance Amount"], { positive: true, min: 1000 });
 
   const indostarEmiAmount = isIndostarScheduleFormat(text) ? findIndostarEmiAmount(text) : "";
   const preferScheduleAmounts = scheduleValues.scheduleParsed === "yes" &&
@@ -6840,6 +6928,57 @@ function parseTvsScheduleRows(text) {
   }).filter(Boolean);
 }
 
+function isAxisRepaymentSchedule(text) {
+  const normalized = String(text ?? "").replace(/\s+/g, " ");
+  return /Agreement\s+Number/i.test(normalized) &&
+    /Loan\s+Amount\s+disbursed/i.test(normalized) &&
+    /Instl\s+Due\s+Date/i.test(normalized) &&
+    /Opening\s+Principal/i.test(normalized) &&
+    /Closing\s+Principal/i.test(normalized) &&
+    /Rate\s*\(%\)/i.test(normalized);
+}
+
+function parseAxisScheduleRows(text) {
+  const rawText = String(text ?? "");
+  if (!isAxisRepaymentSchedule(rawText)) return [];
+
+  // Axis table columns:
+  // Instl Num | Due Date | Opening Principal | Instl Amount |
+  // Principal | Interest | Closing Principal | Rate (%)
+  return rawText
+    .split(/\n+/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .map((line) => {
+      const match = line.match(/^(\d{1,3})\s+(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\s+(.+)$/);
+      if (!match) return null;
+      const values = extractSignedMoneyLikeNumbers(match[3]);
+      if (values.length < 6) return null;
+
+      const [openingPrincipal, installmentAmount, principalPaid, interest, closingPrincipal, rate] = values;
+      const opening = toNumber(openingPrincipal);
+      const emi = toNumber(installmentAmount);
+      const principal = toNumber(principalPaid);
+      const interestAmount = toNumber(interest);
+      const closing = toNumber(closingPrincipal);
+      const rateValue = toNumber(rate);
+      if (opening <= 0 || emi <= 0 || closing < 0 || rateValue <= 0 || rateValue > 40) return null;
+      if (Math.abs(emi - (principal + interestAmount)) > Math.max(emi * 0.15, 50)) return null;
+      if (closing > opening * 1.01) return null;
+
+      return makeScheduleRow({
+        installment: match[1],
+        dueDate: match[2],
+        openingPrincipal,
+        installmentAmount,
+        principalPaid,
+        interest,
+        closingPrincipal,
+        rate
+      });
+    })
+    .filter(Boolean);
+}
+
 function parseAuSmallFinanceScheduleRows(text) {
   const rawText = String(text ?? "");
   const normalized = rawText.replace(/\s+/g, " ");
@@ -7095,8 +7234,20 @@ function parseDateFreeScheduleRows(text) {
 }
 
 function inferProfileAgreementFromPdf(pdfRow = {}, rows = []) {
-  const candidates = (rows ?? []).filter((row) => !isBodyRow(row) && isValidAgreementValue(row.loanAccount));
+  const candidates = (rows ?? []).filter((row) => isValidAgreementValue(row.loanAccount));
   if (candidates.length === 1) return candidates[0].loanAccount;
+
+  const numberMatches = candidates.filter((row) => {
+    const fields = ["loanAmount", "emiAmount", "tenure", "paidEmi"];
+    let matched = 0;
+    fields.forEach((field) => {
+      const pdfValue = toNumber(pdfRow[field]);
+      const rowValue = toNumber(row[field]);
+      if (pdfValue > 0 && rowValue > 0 && Math.abs(pdfValue - rowValue) <= Math.max(1, pdfValue * 0.01)) matched += 1;
+    });
+    return matched >= 2;
+  });
+  if (numberMatches.length === 1) return numberMatches[0].loanAccount;
 
   const normalizeMatchText = (value) => String(value ?? "")
     .toLowerCase()
@@ -7169,6 +7320,11 @@ function findScheduleTableValues(text) {
   // bank's schedule.
   const ashokLeylandRows = parseTwoDateScheduleRows(text);
   if (ashokLeylandRows.length > 0) return summarizeScheduleRows(ashokLeylandRows, text);
+  // Axis uses a distinct column order: opening principal comes before EMI,
+  // while TVS puts the closing value in the fourth position. Parse Axis first
+  // so its closing principal is not shifted into another finance column.
+  const axisRows = parseAxisScheduleRows(text);
+  if (axisRows.length > 0) return summarizeScheduleRows(axisRows, text);
   // Tata's six-column schedule also resembles generic TVS tables; select its
   // validated row parser first so the complete 33-row schedule is retained.
   if (isTataFinanceDocument(text)) {
