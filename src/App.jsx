@@ -663,10 +663,12 @@ function financeRecordKeys(clientId, record) {
   const clientKey = String(clientId ?? record?.clientId ?? record?.client_id ?? "").trim();
   const loanAccount = normalizeAgreement(record?.loanAccount ?? record?.loan_account ?? "");
   const registration = normalizeRegNo(baseRegNo(record?.regNo ?? record?.reg_no ?? ""));
-  const bodyKey = isBodyRegNo(record?.regNo ?? record?.reg_no) ? ":body" : "";
+  const bodyRow = isBodyRegNo(record?.regNo ?? record?.reg_no);
+  const recordType = String(record?.type ?? record?.assetType ?? record?.asset_type ?? "Truck").toLowerCase();
+  const assetKey = bodyRow ? "body" : recordType === "trailer" ? "trailer" : "truck";
   const keys = [];
-  if (isValidAgreementValue(loanAccount)) keys.push(`${clientKey}:loan:${loanAccount}${bodyKey}`);
-  if (registration) keys.push(`${clientKey}:reg:${registration}${bodyKey}`);
+  if (isValidAgreementValue(loanAccount)) keys.push(`${clientKey}:${assetKey}:loan:${loanAccount}`);
+  if (registration) keys.push(`${clientKey}:${assetKey}:reg:${registration}`);
   return keys.length ? keys : [`${clientKey}:id:${record?.id ?? Math.random()}`];
 }
 
@@ -3883,7 +3885,6 @@ const customerNavItems = [
   ["dashboard", "Dashboard", "home"],
   ["fleet",     "My Fleet",  "truck"],
   ["dues",      "Dues",      "calendar"],
-  ["documents", "Documents", "upload"],
   ["marketplace","Marketplace","store"],
   ["chats", "Chats", "bell"],
 ];
@@ -3943,14 +3944,6 @@ function CustomerPortal({ session, onLogout }) {
     () => data.vehicles.filter((v) => v.clientId === customerClientId),
     [data, customerClientId]
   );
-  const activeVehicles = useMemo(
-    () => myVehicles.filter((vehicle) => vehicle.status !== "Sold"),
-    [myVehicles]
-  );
-  const soldVehicles = useMemo(
-    () => myVehicles.filter((vehicle) => vehicle.status === "Sold"),
-    [myVehicles]
-  );
   const myDues = useMemo(
     () => {
       const soldVehicleIds = new Set(myVehicles.filter((vehicle) => vehicle.status === "Sold").map((vehicle) => vehicle.id));
@@ -3972,12 +3965,29 @@ function CustomerPortal({ session, onLogout }) {
     [data, myVehicles]
   );
   const myImportedAssets = useMemo(
-    () => canonicalImportedAssets(
-      (data.clientImports ?? [])
-        .filter((item) => item.clientId === customerClientId)
-        .flatMap((item) => (item.rows ?? []).map((row) => ({ ...row, importFile: item.fileName, importedAt: item.importedAt })))
-    ),
+    // Keep the same raw finance-row source as the mobile customer app. The
+    // app resolves the matching registration/loan row at display time, so a
+    // quality-based merge here could select a different closing snapshot.
+    () => (data.clientImports ?? [])
+      .filter((item) => item.clientId === customerClientId)
+      .flatMap((item) => (item.rows ?? []).map((row) => ({ ...row, importFile: item.fileName, importedAt: item.importedAt }))),
     [data, customerClientId]
+  );
+  const customerFleetVehicles = useMemo(
+    () => [...myVehicles, ...customerImportedVehicles(customerClientId, myImportedAssets, myVehicles)],
+    [myVehicles, myImportedAssets, customerClientId]
+  );
+  const activeVehiclePool = useMemo(
+    () => customerFleetVehicles.filter((vehicle) => vehicle.status !== "Sold"),
+    [customerFleetVehicles]
+  );
+  const activeVehicles = useMemo(
+    () => activeVehiclePool.filter((vehicle) => vehicle.type === "Truck" && !isDuplicateTruckForTrailer(vehicle, activeVehiclePool)),
+    [activeVehiclePool]
+  );
+  const soldVehicles = useMemo(
+    () => customerFleetVehicles.filter((vehicle) => vehicle.status === "Sold" && vehicle.type === "Truck" && !isDuplicateTruckForTrailer(vehicle, customerFleetVehicles)),
+    [customerFleetVehicles]
   );
 
   const totalLiability = useMemo(
@@ -3985,7 +3995,8 @@ function CustomerPortal({ session, onLogout }) {
     [activeVehicles, myImportedAssets]
   );
 
-  const openDues = myDues.filter((t) => t.status !== "Closed");
+  const openDues = myDues.filter(isCustomerActiveTask);
+  const attentionDues = openDues.filter((task) => task.type === "EMI" && isDateWithinNextDays(task.dueDate, 7));
   const sectionAllowed = section === "dashboard" || canOpenSection(data, session.role, section);
   const myDocuments = useMemo(
     () => (data.documents ?? []).filter((document) => myVehicles.some((vehicle) => vehicle.id === document.vehicleId)),
@@ -4001,6 +4012,32 @@ function CustomerPortal({ session, onLogout }) {
       return;
     }
     setLoadError(message || "");
+  };
+
+  const markCustomerVehicleSold = async (event, vehicleId) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const confirmation = String(formData.get("confirmation") || "").trim().toUpperCase();
+    const soldDate = String(formData.get("soldDate") || "").trim();
+    const vehicle = myVehicles.find((item) => item.id === vehicleId);
+    if (!vehicle || vehicle.status === "Sold") return;
+    if (!soldDate) {
+      setLoadError("Select the vehicle sold date.");
+      return;
+    }
+    if (confirmation !== "SOLD") {
+      setLoadError("Type SOLD to confirm this vehicle sale.");
+      return;
+    }
+    const updated = {
+      ...data,
+      vehicles: data.vehicles.map((item) => item.id === vehicleId ? { ...item, status: "Sold", soldDate } : item),
+      listings: data.listings.map((item) => item.vehicleId === vehicleId ? { ...item, status: "Sold" } : item),
+      dueTasks: data.dueTasks.map((task) => task.vehicleId === vehicleId ? { ...task, status: "Closed" } : task)
+    };
+    await persistCustomerData(updated, `${vehicle.regNo} marked as sold.`);
+    event.currentTarget.closest("details")?.removeAttribute("open");
+    event.currentTarget.reset();
   };
 
 
@@ -4189,18 +4226,18 @@ function CustomerPortal({ session, onLogout }) {
           <CustomerDashboard
             client={myClient}
             vehicles={activeVehicles}
-            dues={myDues}
-            openDues={openDues}
+            dues={attentionDues}
+            openDues={attentionDues}
             totalLiability={totalLiability}
             importedAssets={myImportedAssets}
             setSection={openPortalSection}
           />
         )}
         {sectionAllowed && section === "fleet" && (
-          <CustomerFleet vehicles={activeVehicles} soldVehicles={soldVehicles} saleClosings={data.saleClosings} client={myClient} importedAssets={myImportedAssets} />
+          <CustomerFleet vehicles={activeVehicles} linkedVehicles={activeVehiclePool} soldVehicles={soldVehicles} saleClosings={data.saleClosings} client={myClient} importedAssets={myImportedAssets} markVehicleSold={markCustomerVehicleSold} />
         )}
         {sectionAllowed && section === "dues" && (
-          <CustomerDues dues={myDues} vehicles={myVehicles} submitCustomerProof={submitCustomerProof} />
+          <CustomerDues vehicles={activeVehiclePool} importedAssets={myImportedAssets} />
         )}
        {sectionAllowed && section === "documents" && (
           <CustomerDocuments documents={myDocuments} vehicles={myVehicles} setSection={openPortalSection} />
@@ -4308,17 +4345,7 @@ function CustomerDashboard({ client, vehicles, dues, openDues, totalLiability, i
   );
 }
 
-function CustomerFleet({ vehicles, soldVehicles = [], saleClosings = [], client, importedAssets = [] }) {
-  const bodyByReg = useMemo(() => {
-    const pairs = new Map();
-    importedAssets
-      .filter((asset) => isBodyRow(asset))
-      .forEach((asset) => {
-        const key = normalizeRegNo(baseRegNo(asset.regNo));
-        if (key && !pairs.has(key)) pairs.set(key, asset);
-      });
-    return pairs;
-  }, [importedAssets]);
+function CustomerFleet({ vehicles, linkedVehicles = vehicles, soldVehicles = [], saleClosings = [], client, importedAssets = [], markVehicleSold }) {
   return (
     <section className="customer-fleet-page">
       <div className="customer-fleet-summary">
@@ -4335,12 +4362,19 @@ function CustomerFleet({ vehicles, soldVehicles = [], saleClosings = [], client,
           <strong>{soldVehicles.length}</strong>
         </div>
         <div>
-          <span>Body records</span>
-          <strong>{[...bodyByReg.keys()].length}</strong>
+          <span>Linked trailers</span>
+          <strong>{linkedVehicles.filter((vehicle) => vehicle.type === "Trailer").length}</strong>
         </div>
       </div>
       <div className="customer-fleet-grid">
-        {vehicles.map((v) => (
+        {vehicles.map((v) => {
+          const linkedTrailer = linkedVehicles.find((candidate) => candidate.type === "Trailer" && normalizeRegNo(baseRegNo(candidate.regNo)) === normalizeRegNo(baseRegNo(v.regNo)));
+          const source = customerVehicleSource(v, importedAssets);
+          const schedule = customerVehicleEmiSchedule(v, importedAssets);
+          const nextEmi = nextCustomerEmi(v, importedAssets);
+          const paidEmi = customerVehiclePaidEmi(v, importedAssets);
+          const tenure = Math.max(Math.round(toNumber(source?.tenure)), schedule.length);
+          return (
           <article className="customer-fleet-card" key={v.id}>
             <div className="customer-fleet-card-head">
               <div>
@@ -4349,31 +4383,33 @@ function CustomerFleet({ vehicles, soldVehicles = [], saleClosings = [], client,
               </div>
               <Badge label={v.status} />
             </div>
+            {markVehicleSold && (
+              <details className="customer-sold-action">
+                <summary>✓&nbsp; Mark Vehicle as Sold</summary>
+                <form className="customer-sold-form" onSubmit={(event) => markVehicleSold(event, v.id)}>
+                  <label>Sold date<input name="soldDate" type="date" defaultValue={new Date().toISOString().slice(0, 10)} required /></label>
+                  <label>Confirmation<input name="confirmation" placeholder="Type SOLD" autoCapitalize="characters" required /></label>
+                  <p>Type SOLD to confirm. This removes the vehicle from active fleet and closes its open dues.</p>
+                  <button type="submit">Save Sold Vehicle</button>
+                </form>
+              </details>
+            )}
             <dl className="customer-fleet-details">
               <div><dt>Type</dt><dd>{v.type}</dd></div>
-              <div><dt>KM</dt><dd>{v.km.toLocaleString("en-IN")}</dd></div>
               <div><dt>Finance Closing Principal</dt><dd>{formatMoney(customerVehicleClosingPrincipal(v, importedAssets))}</dd></div>
-              <div><dt>Insurance</dt><dd>{formatDisplayDate(v.insuranceExpiry)}</dd></div>
-              <div><dt>Permit</dt><dd>{formatDisplayDate(v.permitExpiry)}</dd></div>
-              <div><dt>Combination</dt><dd>{v.combinationId || "Unlinked"}</dd></div>
+              <div><dt>Loan amount</dt><dd>{source.loanAmount ? formatMoney(source.loanAmount) : "-"}</dd></div>
+              <div><dt>Monthly EMI</dt><dd>{source.emiAmount ? formatMoney(source.emiAmount) : "-"}</dd></div>
+              <div><dt>Next EMI due</dt><dd>{nextEmi ? formatDisplayDate(nextEmi.dueDate) : tenure && paidEmi >= tenure ? "Completed" : "-"}</dd></div>
             </dl>
-            <div className="customer-loan-summary">
-              <div><span>Loan ID</span><strong>{v.loanId || `LOAN-${String(v.regNo || v.id).replace(/[^A-Z0-9]/gi, "").toUpperCase()}`}</strong></div>
-              <div><span>Loan account</span><strong>{v.loanAccount || "-"}</strong></div>
-              <div><span>EMI</span><strong>{v.emiAmount ? formatMoney(v.emiAmount) : "-"}</strong></div>
-              <div><span>Progress</span><strong>{v.tenure ? `${customerVehiclePaidEmi(v, importedAssets)} / ${v.tenure} paid` : "-"}</strong></div>
-            </div>
             <div className="customer-loan-history">
               <span>Payment history</span>
-              <strong>{v.emiHistory?.length || 0} verified payments · {v.emiSchedule?.length || 0} schedule rows</strong>
+              <strong>{customerVehiclePaidEmi(v, importedAssets)} paid payments · {Math.max(v.emiSchedule?.length || 0, v.tenure || 0)} schedule rows</strong>
             </div>
-            {bodyByReg.get(normalizeRegNo(baseRegNo(v.regNo))) ? (
-              <BodyFinanceBlock asset={bodyByReg.get(normalizeRegNo(baseRegNo(v.regNo)))} />
-            ) : (
-              <div className="customer-body-empty">No body finance record linked</div>
-            )}
+            <CustomerFleetDisclosure vehicle={v} source={source} schedule={schedule} paidEmi={paidEmi} tenure={tenure} nextEmi={nextEmi} />
+            {linkedTrailer && <CustomerLinkedTrailerDetails trailer={linkedTrailer} importedAssets={importedAssets} />}
           </article>
-        ))}
+          );
+        })}
         {vehicles.length === 0 && soldVehicles.length === 0 && (
           <Empty text="No vehicles found for your account." />
         )}
@@ -4413,20 +4449,75 @@ function CustomerFleet({ vehicles, soldVehicles = [], saleClosings = [], client,
   );
 }
 
-function BodyFinanceBlock({ asset }) {
+function CustomerFleetDisclosure({ vehicle, source, schedule, paidEmi, tenure, nextEmi }) {
   return (
-    <div className="customer-body-block">
-      <div className="customer-body-block-head">
-        <span>Body finance</span>
-        <strong>{formatAutoClosingPrincipal(asset)}</strong>
-      </div>
-      <div className="customer-body-grid">
-        <div><span>Loan No.</span><strong>{asset.loanAccount || "-"}</strong></div>
-        <div><span>Financier</span><strong>{asset.financier || "-"}</strong></div>
-        <div><span>EMI</span><strong>{formatPlainMoney(asset.emiAmount)}</strong></div>
-        <div><span>Paid EMI</span><strong>{effectivePaidEmi(asset) || "-"}</strong></div>
-      </div>
+    <div className="customer-fleet-disclosures">
+      <details className="customer-fleet-disclosure">
+        <summary>
+          <span>EMI schedule</span>
+          <strong>
+            {source.emiAmount ? `Monthly EMI · ${formatMoney(source.emiAmount)}` : "Monthly EMI · -"}
+            <br />
+            {nextEmi ? `Next · ${formatDisplayDate(nextEmi.dueDate)}` : tenure && paidEmi >= tenure ? "Completed" : "Schedule unavailable"}
+          </strong>
+        </summary>
+        <div className="customer-fleet-disclosure-body">
+          <dl className="customer-fleet-details customer-fleet-details-compact">
+            <div><dt>Monthly EMI</dt><dd>{source.emiAmount ? formatMoney(source.emiAmount) : "-"}</dd></div>
+            <div><dt>Payment history</dt><dd>{paidEmi} paid</dd></div>
+            <div><dt>Progress</dt><dd>{tenure ? `${paidEmi} of ${tenure} instalments` : "-"}</dd></div>
+            <div><dt>Next EMI due</dt><dd>{nextEmi ? formatDisplayDate(nextEmi.dueDate) : tenure && paidEmi >= tenure ? "Completed" : "-"}</dd></div>
+          </dl>
+          <div className="customer-fleet-schedule">
+            {schedule.length === 0 ? <p className="customer-fleet-muted">EMI schedule not available.</p> : schedule.map((entry, index) => (
+              <div className="customer-fleet-schedule-row" key={`${entry.installment || index + 1}-${entry.dueDate || index}`}>
+                <div><strong>EMI {entry.installment || index + 1}</strong><span>{formatDisplayDate(entry.dueDate)}</span></div>
+                <div><strong>{formatMoney(entry.amount || source.emiAmount || 0)}</strong><span className={entry.status === "Paid" ? "customer-paid-status" : "customer-due-status"}>{entry.status === "Paid" ? "Paid" : "Due"}</span></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </details>
+
+      <details className="customer-fleet-disclosure">
+        <summary><span>Insurance &amp; compliance</span><strong>Policy and expiry details</strong></summary>
+        <div className="customer-fleet-disclosure-body">
+          <dl className="customer-fleet-details customer-fleet-details-compact">
+            <div><dt>Policy</dt><dd>{vehicle.insurancePolicyNo || "-"}</dd></div>
+            <div><dt>Insurance expiry</dt><dd>{formatDisplayDate(vehicle.insuranceExpiry)}</dd></div>
+            <div><dt>PUC expiry</dt><dd>{formatDisplayDate(vehicle.pucExpiry)}</dd></div>
+            <div><dt>Fitness expiry</dt><dd>{formatDisplayDate(vehicle.fitnessExpiry)}</dd></div>
+            <div><dt>Permit expiry</dt><dd>{formatDisplayDate(vehicle.permitExpiry)}</dd></div>
+            <div><dt>Permit no.</dt><dd>{vehicle.permitNo || "-"}</dd></div>
+          </dl>
+        </div>
+      </details>
     </div>
+  );
+}
+
+function CustomerLinkedTrailerDetails({ trailer, importedAssets = [] }) {
+  const source = customerVehicleSource(trailer, importedAssets);
+  const schedule = customerVehicleEmiSchedule(trailer, importedAssets);
+  const paidEmi = customerVehiclePaidEmi(trailer, importedAssets);
+  const tenure = Math.max(Math.round(toNumber(source?.tenure)), schedule.length);
+  const nextEmi = nextCustomerEmi(trailer, importedAssets);
+  return (
+    <details className="customer-fleet-disclosure customer-linked-trailer-details">
+      <summary><span>Linked trailer</span><strong>{trailer.regNo} · {trailer.make} {trailer.model || "Trailer"}</strong></summary>
+      <div className="customer-fleet-disclosure-body">
+        <dl className="customer-fleet-details customer-fleet-details-compact">
+          <div><dt>Asset type</dt><dd>Trailer</dd></div>
+          <div><dt>Status</dt><dd>{trailer.status}</dd></div>
+          <div><dt>Financier</dt><dd>{source.financier || trailer.financier || "-"}</dd></div>
+          <div><dt>Loan amount</dt><dd>{source.loanAmount ? formatMoney(source.loanAmount) : "-"}</dd></div>
+          <div><dt>Monthly EMI</dt><dd>{source.emiAmount ? formatMoney(source.emiAmount) : "-"}</dd></div>
+          <div><dt>Next EMI due</dt><dd>{nextEmi ? formatDisplayDate(nextEmi.dueDate) : tenure && paidEmi >= tenure ? "Completed" : "-"}</dd></div>
+          <div><dt>Paid EMI</dt><dd>{tenure ? `${paidEmi} / ${tenure}` : paidEmi}</dd></div>
+          <div><dt>Closing principal</dt><dd>{formatMoney(customerVehicleClosingPrincipal(trailer, importedAssets))}</dd></div>
+        </dl>
+      </div>
+    </details>
   );
 }
 
@@ -4454,50 +4545,103 @@ async function readListingPhotos(files) {
   })));
 }
 
-function CustomerDues({ dues, vehicles, submitCustomerProof }) {
-  const open = dues.filter((t) => t.status !== "Closed");
-  const closed = dues.filter((t) => t.status === "Closed");
-  const totalOpen = open.reduce((s, t) => s + t.amount, 0);
+function CustomerDues({ vehicles, importedAssets = [] }) {
+  const [activeAlertTab, setActiveAlertTab] = useState("PUC");
+  const alertTabs = [
+    { key: "PUC", label: "PUC", icon: "upload" },
+    { key: "Fitness", label: "Fitness", icon: "check" },
+    { key: "Permit", label: "Permit", icon: "calendar" },
+    { key: "EMI", label: "EMI", icon: "calendar" }
+  ];
+  const selectedTab = alertTabs.find((tab) => tab.key === activeAlertTab) ?? alertTabs[0];
+  const alertVehicles = vehicles
+    .filter((vehicle) => vehicle.status !== "Sold")
+    .filter((vehicle) => !isDuplicateTruckForTrailer(vehicle, vehicles))
+    .filter((vehicle) => activeAlertTab === "EMI" || vehicle.type === "Truck")
+    .map((vehicle) => {
+      const source = customerVehicleSource(vehicle, importedAssets);
+      const nextEmi = activeAlertTab === "EMI" ? nextCustomerEmi(vehicle, importedAssets) : null;
+      const expiry = activeAlertTab === "PUC"
+        ? vehicle.pucExpiry
+        : activeAlertTab === "Fitness"
+          ? vehicle.fitnessExpiry
+          : activeAlertTab === "Permit"
+            ? vehicle.permitExpiry
+            : nextEmi?.dueDate || "";
+      return {
+        vehicle,
+        source,
+        expiry: expiry || "",
+        amount: nextEmi?.amount || toNumber(source?.emiAmount)
+      };
+    })
+    .filter(({ expiry }) => expiry && (activeAlertTab === "EMI"
+      ? isDateWithinNextDays(expiry, 7)
+      : isExpiryWithinNextMonth(expiry)))
+    .sort((first, second) => (parseDisplayDate(first.expiry)?.getTime() || Number.MAX_SAFE_INTEGER) - (parseDisplayDate(second.expiry)?.getTime() || Number.MAX_SAFE_INTEGER));
 
   return (
-    <section className="dues-board">
-      <div className="dues-summary">
-        <article className="dues-summary-card summary-alerts">
-          <div className="dues-summary-icon"><AlertSvg name="calendar" /></div>
-          <div><span>Open dues</span><strong>{open.length}</strong><small>Needs attention</small></div>
-        </article>
-        <article className="dues-summary-card summary-expired">
-          <div className="dues-summary-icon"><AlertSvg name="check" /></div>
-          <div><span>Closed</span><strong>{closed.length}</strong><small>Completed records</small></div>
-        </article>
-        <article className="dues-summary-card summary-payment">
-          <div className="dues-summary-icon"><AlertSvg name="money" /></div>
-          <div><span>Total outstanding</span><strong>{formatMoney(totalOpen)}</strong><small>Open due amount</small></div>
-        </article>
-      </div>
-      <section className="smart-alert-panel">
-        <div className="smart-alert-head">
-          <h2>All Dues</h2>
-          <span>{dues.length} records</span>
+    <section className="customer-due-screen">
+      <section className="customer-alert-section">
+        <div className="customer-alert-header">
+          <div className="customer-alert-heading-copy">
+            <h2>Alerts</h2>
+            <p>Vehicle expiry and EMI monitoring</p>
+          </div>
+          <div className="customer-alert-bell"><Icon name="bell" /></div>
         </div>
-        <div className="dues-list" style={{ padding: "14px" }}>
-          {open.map((task) => {
-            const v = vehicles.find((x) => x.id === task.vehicleId);
-            return (
-              <article className="due" key={task.id}>
-                <div className="due-copy">
-                  <strong>{task.type} — {v?.regNo ?? "—"}</strong>
-                  <span>Due {formatDisplayDate(task.dueDate)} · {task.priority} priority</span>
+        <div className="customer-alert-summary">
+          <div>
+            <span>TRACKING</span>
+            <strong>{alertVehicles.length} vehicles</strong>
+          </div>
+          <span className="customer-alert-summary-pill"><i />{selectedTab.label}</span>
+        </div>
+        <div className="customer-alert-tabs" role="tablist" aria-label="Due alerts">
+          {alertTabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={activeAlertTab === tab.key}
+              className={activeAlertTab === tab.key ? "active" : ""}
+              onClick={() => setActiveAlertTab(tab.key)}
+            >
+              <Icon name={tab.icon} />
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </div>
+        {alertVehicles.length === 0 ? (
+          <div className="customer-alert-empty">No {selectedTab.label} alerts in the current reminder window.</div>
+        ) : (
+          <div className="customer-alert-list">
+            {alertVehicles.map(({ vehicle, expiry, amount }) => (
+              <article className="customer-alert-card" key={`${activeAlertTab}-${vehicle.id}`}>
+                <div className="customer-alert-vehicle-icon"><Icon name="truck" /></div>
+                <div className="customer-alert-vehicle-copy">
+                  <strong>{vehicle.regNo}</strong>
+                  <span>{vehicle.type}</span>
                 </div>
-                <div className="due-status"><Badge label={task.status} /></div>
-                <b className="due-amount">{formatMoney(task.amount)}</b>
-                {task.status !== "Proof Pending" && <CustomerProofForm task={task} submitCustomerProof={submitCustomerProof} />}
-                {task.status === "Proof Pending" && <span className="proof-pending-note">Proof submitted for Admin review</span>}
+                <div className="customer-alert-expiry">
+                  {activeAlertTab === "EMI" ? (
+                    <>
+                      <span>Monthly EMI</span>
+                      <strong>{amount ? formatMoney(amount) : "-"}</strong>
+                      <small>NEXT EMI</small>
+                      <b>{formatDisplayDate(expiry)}</b>
+                    </>
+                  ) : (
+                    <>
+                      <span>{selectedTab.label} expiry</span>
+                      <b className="customer-alert-date-pill">{formatDisplayDate(expiry)}</b>
+                    </>
+                  )}
+                </div>
               </article>
-            );
-          })}
-          {dues.length === 0 && <Empty text="No dues found for your account." />}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
     </section>
   );
@@ -5016,6 +5160,42 @@ function parseDisplayDate(value) {
     date.getDate() === Number(day) ? date : null;
 }
 
+function isDateWithinNextDays(value, days) {
+  const date = parseDisplayDate(value);
+  if (!date) return false;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const endDate = new Date(today);
+  endDate.setDate(today.getDate() + days);
+  return date >= today && date <= endDate;
+}
+
+function isExpiryWithinNextMonth(value) {
+  const expiry = parseDisplayDate(value);
+  if (!expiry) return false;
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const targetMonth = today.getMonth() === 11 ? 0 : today.getMonth() + 1;
+  const targetYear = today.getFullYear() + (today.getMonth() === 11 ? 1 : 0);
+  const lastDayOfTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+  const oneMonthFromToday = new Date(targetYear, targetMonth, Math.min(today.getDate(), lastDayOfTargetMonth));
+
+  return expiry >= today && expiry <= oneMonthFromToday;
+}
+
+function isCustomerActiveTask(task) {
+  if (["Auto Paid", "Paid", "Closed"].includes(String(task?.status))) return false;
+  if (task?.type === "EMI") {
+    const dueDate = parseDisplayDate(task.dueDate);
+    if (!dueDate) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (dueDate < today) return false;
+  }
+  return true;
+}
+
 function buildLoanPlan(fields) {
   const tenure = Math.min(Math.max(Math.round(toNumber(fields.tenure)), 0), 360);
   const emiAmount = toNumber(fields.emiAmount);
@@ -5265,7 +5445,7 @@ function effectivePaidEmi(row, asOf = new Date()) {
   const tenure = Math.min(Math.max(Math.round(toNumber(row.tenure)), 0), 360);
   const savedPaid = Math.min(Math.max(Math.round(toNumber(row.paidEmi)), 0), tenure || 360);
   const today = new Date(asOf);
-  today.setHours(0, 0, 0, 0);
+  today.setHours(23, 59, 59, 999);
   const schedule = Array.isArray(row.emiSchedule) ? row.emiSchedule : [];
   const dueFromSchedule = schedule.filter((entry) => {
     const dueDate = parseDisplayDate(entry?.dueDate);
@@ -5273,11 +5453,10 @@ function effectivePaidEmi(row, asOf = new Date()) {
     dueDate.setHours(0, 0, 0, 0);
     return dueDate <= today;
   }).length;
-  if (dueFromSchedule > 0) return Math.min(Math.max(savedPaid, dueFromSchedule), tenure || schedule.length || 360);
   const start = parseDisplayDate(row.emiStart);
-  if (!start) return savedPaid;
+  if (!start) return Math.min(Math.max(savedPaid, dueFromSchedule), tenure || schedule.length || 360);
   start.setHours(0, 0, 0, 0);
-  if (today < start) return savedPaid;
+  if (today < start) return Math.max(savedPaid, dueFromSchedule);
   const maxCount = tenure || 360;
   let dueCount = 0;
   for (let index = 0; index < maxCount; index += 1) {
@@ -5286,33 +5465,161 @@ function effectivePaidEmi(row, asOf = new Date()) {
     if (dueDate > today) break;
     dueCount += 1;
   }
-  return Math.min(Math.max(savedPaid, dueCount), maxCount);
+  return Math.min(Math.max(savedPaid, dueFromSchedule, dueCount), maxCount);
 }
 
 function importedFinanceAssetForVehicle(vehicle, importedAssets = []) {
   const vehicleReg = normalizeRegNo(baseRegNo(vehicle.regNo));
-  const vehicleLoanAccount = normalizeRegNo(vehicle.loanAccount || "");
+  const vehicleLoanAccount = normalizeRegNo(vehicle.financeSourceLoanAccount || vehicle.loanAccount || "");
+  const vehicleType = String(vehicle.type || "Truck").toLowerCase();
+  const bodyTrailer = vehicle.financeSourceIsBody === true || (vehicleType === "trailer" && /body/i.test(String(vehicle.model || "")));
+  const exactSourceMatch = vehicleLoanAccount
+    ? importedAssets.find((asset) => normalizeRegNo(asset.loanAccount || "") === vehicleLoanAccount && isBodyRow(asset) === bodyTrailer)
+    : null;
+  if (exactSourceMatch) return exactSourceMatch;
   const matches = importedAssets.filter((asset) => {
-    if (isBodyRow(asset)) return false;
+    if (isBodyRow(asset) !== bodyTrailer) return false;
     const assetReg = normalizeRegNo(baseRegNo(asset.regNo));
     const assetLoanAccount = normalizeRegNo(asset.loanAccount || "");
     return (vehicleReg && assetReg === vehicleReg)
       || (vehicleLoanAccount && assetLoanAccount && assetLoanAccount === vehicleLoanAccount);
   });
-  return matches.find((asset) => asset.pdfImportedAt || asset.bankClosingPrincipal || asset.bank_closing_principal) ?? matches[0];
+  const exactLoanMatches = vehicleLoanAccount
+    ? matches.filter((asset) => normalizeRegNo(asset.loanAccount || "") === vehicleLoanAccount)
+    : [];
+  return exactLoanMatches.find((asset) => asset.pdfImportedAt || asset.bankClosingPrincipal || asset.bank_closing_principal)
+    ?? exactLoanMatches[0]
+    ?? matches.find((asset) => asset.pdfImportedAt || asset.bankClosingPrincipal || asset.bank_closing_principal)
+    ?? matches[0];
 }
 
 function customerVehicleClosingPrincipal(vehicle, importedAssets = []) {
   const importedAsset = importedFinanceAssetForVehicle(vehicle, importedAssets);
   if (importedAsset?.bankClosingPrincipalUnknown === true) return 0;
   const importedClosing = autoClosingPrincipal(importedAsset);
-  return importedClosing > 0 ? importedClosing : Number(vehicle.principal || 0);
+  if (importedClosing > 0) return importedClosing;
+
+  // Keep the customer web total identical to the mobile customer app when
+  // the imported row has no usable closing snapshot: apply the extra paid
+  // installments against the saved vehicle principal.
+  const savedClosing = toNumber(vehicle.principal);
+  const emiAmount = toNumber(vehicle.emiAmount);
+  const savedPaid = Math.max(0, Math.round(toNumber(vehicle.paidEmi)));
+  const currentPaid = Math.max(
+    effectivePaidEmi(vehicle),
+    customerVehiclePaidEmi(vehicle, importedAssets)
+  );
+  const extraPaidCount = Math.max(currentPaid - savedPaid, 0);
+  return savedClosing > 0 && emiAmount > 0 && extraPaidCount > 0
+    ? amortizeClosingPrincipal(savedClosing, emiAmount, toNumber(vehicle.interestRate) || BANK_RELEASE_RATE_PERCENT, extraPaidCount)
+    : savedClosing;
 }
 
 function customerVehiclePaidEmi(vehicle, importedAssets = []) {
   const importedAsset = importedFinanceAssetForVehicle(vehicle, importedAssets);
   if (importedAsset?.paidEmiUnknown === true) return 0;
   return effectivePaidEmi(importedAsset) || Math.round(toNumber(vehicle.paidEmi));
+}
+
+function customerVehicleSource(vehicle, importedAssets = []) {
+  return importedFinanceAssetForVehicle(vehicle, importedAssets) ?? vehicle;
+}
+
+function customerImportedVehicles(clientId, importedAssets = [], existingVehicles = []) {
+  const existingKeys = new Set(existingVehicles.map((vehicle) => {
+    const type = vehicle.type === "Trailer" ? "Trailer" : "Truck";
+    return `${clientId}:${type}:${normalizeRegNo(baseRegNo(vehicle.regNo))}`;
+  }));
+  return importedAssets.flatMap((asset, index) => {
+    const isBody = isBodyRow(asset);
+    const assetType = String(asset.type || asset.assetType || asset.asset_type || "").toLowerCase();
+    const type = isBody || assetType === "trailer" || normalizeRegNo(asset.regNo).includes("TR") ? "Trailer" : "Truck";
+    const regNo = baseRegNo(asset.regNo);
+    const regKey = normalizeRegNo(regNo);
+    if (!regKey || existingKeys.has(`${clientId}:${type}:${regKey}`)) return [];
+    existingKeys.add(`${clientId}:${type}:${regKey}`);
+    const id = `v-imported-${clientId}-${type.toLowerCase()}-${index}`;
+    const yearMatch = String(asset.yearOfMfg || asset.year || "").match(/\d{4}/);
+    return [{
+      id,
+      clientId,
+      type,
+      regNo,
+      make: asset.manufacturer || (isBody ? "Trailer" : ""),
+      model: asset.model || (isBody ? "Body" : ""),
+      year: yearMatch ? Number(yearMatch[0]) : 0,
+      km: 0,
+      principal: autoClosingPrincipal(asset),
+      overdue: 0,
+      penalty: 0,
+      foreclosure: 0,
+      loanId: asset.loanId || `LOAN-${normalizeAgreement(asset.loanAccount || regNo)}`,
+      loanAccount: asset.loanAccount || "",
+      financeSourceLoanAccount: asset.loanAccount || "",
+      financeSourceIsBody: isBody,
+      financier: asset.financier || asset.lender || "",
+      loanAmount: toNumber(asset.loanAmount),
+      emiAmount: toNumber(asset.emiAmount),
+      interestRate: toNumber(asset.interestRate),
+      tenure: toNumber(asset.tenure),
+      paidEmi: toNumber(asset.paidEmi),
+      emiStart: asset.emiStart || "",
+      emiEnd: asset.emiEnd || "",
+      emiSchedule: Array.isArray(asset.emiSchedule) ? asset.emiSchedule : parseJsonArray(asset.emiSchedule),
+      emiHistory: Array.isArray(asset.emiHistory) ? asset.emiHistory : parseJsonArray(asset.emiHistory),
+      insuranceCompany: asset.policyCompany || "",
+      insurancePolicyNo: asset.policyNo || "",
+      insuranceExpiry: asset.policyEnd || "",
+      pucExpiry: asset.pucExpired || "",
+      fitnessExpiry: asset.fitnessExpired || "",
+      permitNo: asset.permitNo || "",
+      permitExpiry: asset.permitExpired || asset.nationalPermitExpired || "",
+      status: asset.status === "Sold" ? "Sold" : "Active"
+    }];
+  });
+}
+
+function customerVehicleEmiSchedule(vehicle, importedAssets = []) {
+  const source = customerVehicleSource(vehicle, importedAssets);
+  const savedSchedule = Array.isArray(source?.emiSchedule)
+    ? source.emiSchedule.filter((entry) => parseDisplayDate(entry?.dueDate)).map((entry) => ({ ...entry }))
+    : [];
+  const tenure = Math.max(
+    Math.round(toNumber(source?.tenure)),
+    savedSchedule.reduce((max, entry, index) => Math.max(max, Math.round(toNumber(entry?.installment)) || index + 1), 0),
+    customerVehiclePaidEmi(vehicle, importedAssets)
+  );
+  const loanPlan = tenure > savedSchedule.length && toNumber(source?.emiAmount) > 0
+    ? buildLoanPlan({ ...source, tenure, paidEmi: customerVehiclePaidEmi(vehicle, importedAssets) })
+    : { schedule: [] };
+  const byInstallment = new Map();
+  [...savedSchedule, ...(loanPlan.schedule ?? [])].forEach((entry, index) => {
+    const installment = Math.round(toNumber(entry?.installment)) || index + 1;
+    const existing = byInstallment.get(installment);
+    byInstallment.set(installment, existing ? mergeDuplicateRecord(existing, entry) : { ...entry, installment });
+  });
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  return [...byInstallment.values()]
+    .sort((first, second) => Number(first.installment || 0) - Number(second.installment || 0))
+    .map((entry) => {
+      const dueDate = parseDisplayDate(entry.dueDate);
+      const autoPaid = Boolean(dueDate && dueDate <= today);
+      return { ...entry, autoPaid, status: entry.status === "Paid" || autoPaid ? "Paid" : entry.status || "Due" };
+    });
+}
+
+function nextCustomerEmi(vehicle, importedAssets = []) {
+  const schedule = customerVehicleEmiSchedule(vehicle, importedAssets);
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+  return schedule.find((entry) => {
+    const dueDate = parseDisplayDate(entry.dueDate);
+    return dueDate && dueDate > today && entry.status !== "Paid";
+  }) || schedule.find((entry) => {
+    const dueDate = parseDisplayDate(entry.dueDate);
+    return dueDate && dueDate > today;
+  }) || null;
 }
 
 function normalizeRegNo(value) {
@@ -5524,6 +5831,20 @@ function canonicalImportedAssets(assets = []) {
 
 function baseRegNo(value) {
   return String(value ?? "").replace(/\s+body\b/i, "").trim();
+}
+
+function isDuplicateTruckForTrailer(vehicle, allVehicles = []) {
+  if (vehicle?.type !== "Truck") return false;
+  const registration = normalizeRegNo(baseRegNo(vehicle.regNo));
+  const trailer = allVehicles.find((candidate) => candidate.type === "Trailer" && normalizeRegNo(baseRegNo(candidate.regNo)) === registration);
+  if (!trailer) return false;
+  if (trailer.status !== "Active") return true;
+  const truckLoan = normalizeAgreement(vehicle.loanAccount || "");
+  const trailerLoan = normalizeAgreement(trailer.loanAccount || "");
+  if (truckLoan && trailerLoan && truckLoan === trailerLoan) return true;
+  return toNumber(vehicle.loanAmount) > 0
+    && toNumber(vehicle.loanAmount) === toNumber(trailer.loanAmount)
+    && toNumber(vehicle.emiAmount) === toNumber(trailer.emiAmount);
 }
 
 function excelRowToVehicle(row, clientId, id) {

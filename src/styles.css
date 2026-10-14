@@ -221,6 +221,70 @@
   margin-top: 4px;
 }
 
+.customer-sold-action {
+  border: 1px solid rgba(94,211,155,.6);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.customer-sold-action summary {
+  background: rgba(24,91,76,.35);
+  color: #F0A500;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 950;
+  list-style: none;
+  padding: 14px;
+  text-align: center;
+}
+
+.customer-sold-action summary::-webkit-details-marker {
+  display: none;
+}
+
+.customer-sold-form {
+  border-top: 1px solid rgba(94,211,155,.35);
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.customer-sold-form label {
+  color: #C3D2E5;
+  display: grid;
+  font-size: 11px;
+  font-weight: 900;
+  gap: 5px;
+  text-transform: uppercase;
+}
+
+.customer-sold-form input {
+  background: #07172D;
+  border: 1px solid #2A476F;
+  border-radius: 10px;
+  color: #F5F8FD;
+  font: inherit;
+  padding: 10px 12px;
+}
+
+.customer-sold-form p {
+  color: #AFC2DC;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.customer-sold-form button {
+  background: #F0A500;
+  border: 0;
+  border-radius: 10px;
+  color: #07172D;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 950;
+  padding: 11px 14px;
+}
+
 .customer-fleet-details {
   display: grid;
   gap: 14px;
@@ -294,6 +358,157 @@
   font-weight: 800;
   padding: 12px 14px;
   text-align: center;
+}
+
+.customer-linked-trailer {
+  background: linear-gradient(135deg, rgba(240,165,0,.1), rgba(15,34,64,.72));
+  border: 1px solid rgba(240,165,0,.35);
+  border-radius: 14px;
+  display: grid;
+  gap: 3px;
+  padding: 12px 14px;
+}
+
+.customer-linked-trailer span,
+.customer-linked-trailer small {
+  color: #AFC2DC;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.customer-linked-trailer strong {
+  color: #F0A500;
+  font-size: 14px;
+}
+
+.customer-fleet-disclosures {
+  display: grid;
+  gap: 10px;
+}
+
+.customer-fleet-disclosure {
+  background: linear-gradient(145deg, rgba(18,43,77,.9), rgba(8,20,38,.94));
+  border: 1px solid #2A476F;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.customer-fleet-disclosure[open] {
+  border-color: rgba(240,165,0,.55);
+  box-shadow: 0 10px 24px rgba(2,10,22,.22);
+}
+
+.customer-fleet-disclosure summary {
+  align-items: center;
+  color: #F5F8FD;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  list-style: none;
+  padding: 14px;
+}
+
+.customer-fleet-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.customer-fleet-disclosure summary::after {
+  color: #F0A500;
+  content: "+";
+  flex: 0 0 auto;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.customer-fleet-disclosure[open] summary::after {
+  content: "−";
+}
+
+.customer-fleet-disclosure summary span {
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.customer-fleet-disclosure summary strong {
+  color: #AFC2DC;
+  font-size: 11px;
+  font-weight: 800;
+  margin-left: auto;
+  text-align: right;
+}
+
+.customer-fleet-disclosure-body {
+  border-top: 1px solid #2A476F;
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+}
+
+.customer-fleet-details-compact {
+  gap: 12px;
+}
+
+.customer-fleet-details-compact dd {
+  font-size: 14px;
+}
+
+.customer-fleet-schedule {
+  border: 1px solid #2A476F;
+  border-radius: 12px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.customer-fleet-schedule-row {
+  align-items: center;
+  border-bottom: 1px solid rgba(42,71,111,.75);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.customer-fleet-schedule-row:last-child {
+  border-bottom: 0;
+}
+
+.customer-fleet-schedule-row > div:last-child {
+  text-align: right;
+}
+
+.customer-fleet-schedule-row strong {
+  color: #F5F8FD;
+  display: block;
+  font-size: 13px;
+}
+
+.customer-fleet-schedule-row span {
+  color: #AFC2DC;
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  margin-top: 3px;
+}
+
+.customer-fleet-schedule-row .customer-paid-status {
+  color: #5ED39B;
+}
+
+.customer-fleet-schedule-row .customer-due-status {
+  color: #F0A500;
+}
+
+.customer-fleet-muted {
+  color: #AFC2DC;
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0;
+  padding: 14px;
+}
+
+.customer-linked-trailer-details {
+  border-color: rgba(240,165,0,.35);
 }
 
 .customer-loan-summary {
@@ -3862,7 +4077,283 @@ textarea {
   background:
     radial-gradient(900px 420px at 82% -12%, rgba(42, 71, 111, 0.06), transparent 58%),
     #f4f7fa;
+  height: 100dvh;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
   padding: 42px 38px 34px;
+}
+
+.customer-shell .customer-fleet-page {
+  min-height: max-content;
+  padding-bottom: 56px;
+}
+
+.customer-shell .customer-fleet-grid {
+  align-items: start;
+}
+
+/* Customer Due alerts mirror the mobile customer alert rules. */
+.customer-shell .customer-due-screen {
+  max-width: none;
+  width: 100%;
+}
+
+.customer-shell .customer-alert-section {
+  background: linear-gradient(145deg, #102744 0%, #0b1a31 62%, #081426 100%);
+  border: 1px solid #315988;
+  border-radius: 18px;
+  box-shadow: 0 18px 42px rgba(2, 10, 22, 0.28), inset 0 1px 0 rgba(255,255,255,0.03);
+  overflow: hidden;
+}
+
+.customer-shell .customer-alert-header {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  padding: 26px 28px 18px;
+}
+
+.customer-shell .customer-alert-heading-copy h2 {
+  color: #f4f7fb;
+  font-size: clamp(28px, 3vw, 40px);
+  letter-spacing: -0.04em;
+  margin: 0;
+}
+
+.customer-shell .customer-alert-heading-copy p {
+  color: #b9cbe0;
+  font-size: 17px;
+  font-weight: 700;
+  margin: 6px 0 0;
+}
+
+.customer-shell .customer-alert-bell {
+  align-items: center;
+  background: #173d68;
+  border: 1px solid #3a6b9f;
+  border-radius: 15px;
+  color: #f0a500;
+  display: flex;
+  height: 58px;
+  justify-content: center;
+  width: 58px;
+}
+
+.customer-shell .customer-alert-bell .icon {
+  height: 28px;
+  width: 28px;
+}
+
+.customer-shell .customer-alert-summary {
+  align-items: center;
+  background: rgba(3, 15, 31, 0.6);
+  border: 1px solid rgba(49, 89, 136, 0.6);
+  border-radius: 14px;
+  display: flex;
+  justify-content: space-between;
+  margin: 0 28px 18px;
+  padding: 15px 18px;
+}
+
+.customer-shell .customer-alert-summary span:first-child,
+.customer-shell .customer-alert-expiry span,
+.customer-shell .customer-alert-expiry small {
+  color: #9eb3cc;
+  display: block;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.customer-shell .customer-alert-summary strong {
+  color: #f4f7fb;
+  display: block;
+  font-size: 21px;
+  margin-top: 4px;
+}
+
+.customer-shell .customer-alert-summary-pill {
+  align-items: center;
+  background: #173d68;
+  border-radius: 999px;
+  color: #f4f7fb;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 900;
+  gap: 8px;
+  padding: 9px 14px;
+}
+
+.customer-shell .customer-alert-summary-pill i {
+  background: #f0a500;
+  border-radius: 50%;
+  height: 8px;
+  width: 8px;
+}
+
+.customer-shell .customer-alert-tabs {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 0 28px 18px;
+}
+
+.customer-shell .customer-alert-tabs button {
+  align-items: center;
+  background: #0b1a31;
+  border: 1px solid #315988;
+  border-radius: 13px;
+  color: #b9cbe0;
+  display: flex;
+  font-size: 14px;
+  font-weight: 900;
+  gap: 9px;
+  justify-content: center;
+  min-height: 50px;
+  padding: 10px 12px;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.customer-shell .customer-alert-tabs button:hover {
+  border-color: #73b9e8;
+  color: #f4f7fb;
+  transform: translateY(-1px);
+}
+
+.customer-shell .customer-alert-tabs button.active {
+  background: linear-gradient(180deg, #f5b51b, #d98d00);
+  border-color: #ffd66b;
+  color: #081426;
+}
+
+.customer-shell .customer-alert-tabs .icon {
+  height: 18px;
+  width: 18px;
+}
+
+.customer-shell .customer-alert-list {
+  display: grid;
+  gap: 12px;
+  padding: 0 28px 28px;
+}
+
+.customer-shell .customer-alert-card {
+  align-items: center;
+  background: rgba(3, 15, 31, 0.74);
+  border: 1px solid #244b79;
+  border-radius: 15px;
+  display: grid;
+  gap: 15px;
+  grid-template-columns: 58px minmax(0, 1fr) minmax(170px, auto);
+  min-height: 98px;
+  padding: 14px 18px;
+}
+
+.customer-shell .customer-alert-vehicle-icon {
+  align-items: center;
+  background: #143a65;
+  border: 1px solid #275c90;
+  border-radius: 15px;
+  color: #f0a500;
+  display: flex;
+  height: 58px;
+  justify-content: center;
+  width: 58px;
+}
+
+.customer-shell .customer-alert-vehicle-icon .icon {
+  height: 28px;
+  width: 28px;
+}
+
+.customer-shell .customer-alert-vehicle-copy strong {
+  color: #f4f7fb;
+  display: block;
+  font-size: 20px;
+}
+
+.customer-shell .customer-alert-vehicle-copy span {
+  color: #b9cbe0;
+  display: block;
+  font-size: 15px;
+  font-weight: 800;
+  margin-top: 5px;
+}
+
+.customer-shell .customer-alert-expiry {
+  text-align: right;
+}
+
+.customer-shell .customer-alert-expiry strong,
+.customer-shell .customer-alert-expiry b {
+  color: #f0a500;
+  display: block;
+  font-size: 19px;
+  margin-top: 5px;
+}
+
+.customer-shell .customer-alert-expiry small {
+  margin-top: 10px;
+}
+
+.customer-shell .customer-alert-date-pill {
+  background: rgba(240, 165, 0, 0.14);
+  border-radius: 10px;
+  padding: 7px 10px;
+}
+
+.customer-shell .customer-alert-empty {
+  color: #73d4c1;
+  font-size: 15px;
+  font-weight: 800;
+  padding: 12px 28px 30px;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .customer-shell .customer-alert-header,
+  .customer-shell .customer-alert-summary,
+  .customer-shell .customer-alert-tabs,
+  .customer-shell .customer-alert-list {
+    margin-left: 16px;
+    margin-right: 16px;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .customer-shell .customer-alert-header {
+    padding-top: 20px;
+  }
+
+  .customer-shell .customer-alert-tabs {
+    gap: 8px;
+  }
+
+  .customer-shell .customer-alert-tabs button {
+    font-size: 12px;
+    gap: 5px;
+    min-height: 44px;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .customer-shell .customer-alert-card {
+    grid-template-columns: 48px minmax(0, 1fr);
+    padding: 12px;
+  }
+
+  .customer-shell .customer-alert-vehicle-icon {
+    height: 48px;
+    width: 48px;
+  }
+
+  .customer-shell .customer-alert-expiry {
+    grid-column: 2;
+    text-align: left;
+  }
 }
 
 .customer-shell .topbar {
