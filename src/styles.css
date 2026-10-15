@@ -2391,38 +2391,6 @@ button:disabled {
   overflow-x: auto;
 }
 
-.embedded-table {
-  box-shadow: none;
-  max-height: 590px;
-}
-
-.report-toolbar {
-  align-items: end;
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) auto auto;
-  margin-bottom: 8px;
-}
-
-.report-toolbar label {
-  min-width: 0;
-}
-
-.report-toolbar button {
-  align-items: center;
-  display: inline-flex;
-  gap: 7px;
-  justify-content: center;
-  min-height: 42px;
-  white-space: nowrap;
-}
-
-.report-result-count {
-  color: #8FA3BD;
-  font-size: 12px;
-  margin: 0 0 12px;
-}
-
 .sale-closing-panel {
   border-top: 1px solid #2A476F;
   grid-column: 1 / -1;
@@ -2702,9 +2670,54 @@ td {
   gap: 9px;
 }
 
+.vehicle-reg {
+  align-items: center;
+  display: inline-flex;
+  gap: 10px;
+}
+
+.vehicle-type-icon,
+.body-vehicle-icon {
+  align-items: center;
+  background: #173b6b;
+  border: 1px solid #28578e;
+  border-radius: 50%;
+  color: #74b9ec;
+  display: inline-flex;
+  flex: 0 0 34px;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.vehicle-type-icon .icon,
+.body-vehicle-icon .icon {
+  height: 17px;
+  width: 17px;
+}
+
+.vehicle-reg strong,
+.body-reg-copy strong {
+  color: #f7b32b;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.body-reg-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.body-reg-copy small {
+  color: #8fb5d8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
 .body-connector {
-  border-bottom: 2px solid #1E3A5F;
-  border-left: 2px solid #1E3A5F;
+  border-bottom: 2px solid #f5a623;
+  border-left: 2px solid #f5a623;
   display: inline-block;
   height: 15px;
   margin-left: 2px;
@@ -2714,8 +2727,8 @@ td {
 }
 
 .body-connector::after {
-  border-right: 2px solid #1E3A5F;
-  border-top: 2px solid #1E3A5F;
+  border-right: 2px solid #f5a623;
+  border-top: 2px solid #f5a623;
   content: "";
   height: 6px;
   position: absolute;
@@ -2839,9 +2852,9 @@ td {
   background: #0F2240;
   border-bottom: 1px solid #2A476F;
   display: grid;
-  gap: 10px;
+  gap: 14px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding: 12px 20px;
+  padding: 16px 20px;
 }
 
 .marketplace-detail-photos {
@@ -2864,14 +2877,15 @@ td {
 .detail-summary-strip div {
   background: #1D3A66;
   border: 1px solid #2A476F;
-  border-radius: 9px;
-  padding: 10px 12px;
+  border-radius: 12px;
+  min-height: 78px;
+  padding: 14px 16px;
 }
 
 .detail-summary-strip span {
   color: #EDF3FB;
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   text-transform: uppercase;
 }
@@ -2879,15 +2893,27 @@ td {
 .detail-summary-strip strong {
   color: #F0A500;
   display: block;
-  font-size: 16px;
-  margin-top: 4px;
+  font-size: 22px;
+  margin-top: 7px;
 }
 
 .detail-card-grid {
+  align-items: start;
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 16px 20px 20px;
+}
+
+.detail-modal .detail-card-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.detail-card-column {
+  align-content: start;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
 }
 
 .loan-ledger-grid {
@@ -2895,6 +2921,18 @@ td {
   gap: 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 0 20px 20px;
+}
+
+.loan-ledger-grid-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.detail-card-column > .loan-ledger-grid {
+  padding: 0;
+}
+
+.detail-card-column > .loan-ledger-grid .loan-ledger-panel {
+  border-radius: 14px;
 }
 
 .loan-ledger-panel {
@@ -2990,7 +3028,7 @@ td {
 .detail-section-card {
   background: #0F2240;
   border: 1px solid #2A476F;
-  border-radius: 10px;
+  border-radius: 14px;
   box-shadow: 0 10px 24px rgba(2,10,22,0.35);
   overflow: hidden;
 }
@@ -3001,10 +3039,10 @@ td {
   border-bottom: 1px solid #2A476F;
   color: #F0A500;
   display: flex;
-  font-size: 15px;
+  font-size: 17px;
   gap: 8px;
   margin: 0;
-  padding: 12px 13px;
+  padding: 15px 16px;
 }
 
 .detail-section-card h3::before {
@@ -3022,8 +3060,8 @@ td {
   gap: 12px;
   justify-content: space-between;
   margin: 0;
-  min-height: 37px;
-  padding: 10px 13px;
+  min-height: 46px;
+  padding: 12px 16px;
 }
 
 .detail-section-card p:first-child {
@@ -3032,13 +3070,13 @@ td {
 
 .detail-section-card span {
   color: #EDF3FB;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.35;
 }
 
 .detail-section-card b {
   color: #F0A500;
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.35;
   max-width: 58%;
   overflow-wrap: anywhere;
@@ -3564,10 +3602,6 @@ details .form-grid {
 .grid-list.wide,
 .caller-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.grid-list.reports {
-  grid-template-columns: 1fr;
 }
 
 .caller-page-header {
@@ -9463,7 +9497,7 @@ textarea {
 
 .role-card-grid {
   gap: 12px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .role-card {
@@ -9978,4 +10012,2914 @@ textarea {
 @media (max-width: 680px) {
   .public-policy-page { padding: 20px 12px; }
   .public-policy-card { padding: 30px 22px; border-radius: 12px; }
+}
+
+/* Settings layout: keep the page balanced after disabling Caller/Owner modules. */
+.settings-hero {
+  background:
+    radial-gradient(circle at 92% 0%, rgba(245, 166, 35, 0.12), transparent 28%),
+    linear-gradient(135deg, #122b4d 0%, #0f2240 100%);
+  box-shadow: 0 14px 30px rgba(3, 12, 27, 0.18);
+}
+
+.settings-hero-actions button {
+  background: #f5a623;
+  border: 1px solid #f5a623;
+  color: #081426;
+}
+
+.settings-hero-actions button:last-child {
+  background: rgba(8, 20, 38, 0.5);
+  border-color: #5279a8;
+  color: #f2f7fc;
+}
+
+.settings-grid > .settings-card:nth-child(1),
+.settings-grid > .settings-card:nth-child(2),
+.settings-grid > .settings-card:nth-child(3) {
+  grid-row: auto;
+}
+
+.settings-grid > .settings-card:nth-child(1) { grid-column: 1; }
+.settings-grid > .settings-card:nth-child(2) { grid-column: 2; }
+.settings-grid > .settings-card.whatsapp-template-card {
+  grid-column: 1 / -1;
+}
+
+.settings-grid > .settings-card:only-child {
+  grid-column: 1 / -1;
+}
+
+.settings-access {
+  background: linear-gradient(145deg, #102744 0%, #0d203a 100%);
+  box-shadow: 0 14px 30px rgba(3, 12, 27, 0.14);
+}
+
+.settings-access > .settings-section-head {
+  align-items: flex-end;
+  border-bottom: 1px solid rgba(49, 87, 127, 0.72);
+  padding-bottom: 14px;
+}
+
+.role-card-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.role-card {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.role-card-grid > .role-card:only-child {
+  grid-column: 1 / -1;
+}
+
+.settings-access .role-card {
+  padding: 16px;
+}
+
+.settings-access .permission-control-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-access .permission-control {
+  min-height: 52px;
+  padding: 8px 10px;
+}
+
+.permission-fixed-value {
+  align-items: center;
+  background: rgba(245, 166, 35, 0.12);
+  border: 1px solid rgba(245, 166, 35, 0.35);
+  border-radius: 8px;
+  color: #f5a623;
+  display: inline-flex;
+  font-size: 11px;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 10px;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .settings-access .permission-control-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .settings-grid > .settings-card:nth-child(1),
+  .settings-grid > .settings-card:nth-child(2),
+  .settings-grid > .settings-card.whatsapp-template-card {
+    grid-column: 1 / -1;
+  }
+
+  .settings-access > .settings-section-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+/* Settings refresh: clearer security and customer-access controls. */
+.settings-page {
+  gap: 20px;
+  max-width: 1320px;
+}
+
+.settings-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-grid > .settings-card:nth-child(1),
+.settings-grid > .settings-card:nth-child(2) {
+  grid-column: auto;
+}
+
+.settings-grid > .settings-card:nth-child(3) {
+  grid-column: 1 / -1;
+}
+
+.settings-grid > .settings-profile-card {
+  grid-column: 1 / -1;
+}
+
+.settings-grid > .admin-change-password-card {
+  grid-column: 2;
+}
+
+.admin-profile-layout {
+  align-items: stretch;
+  display: grid;
+  gap: 22px;
+  grid-template-columns: minmax(240px, 0.72fr) minmax(0, 1.28fr);
+}
+
+.admin-profile-overview {
+  align-items: center;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(245, 166, 35, 0.16), transparent 42%),
+    #081426;
+  border: 1px solid rgba(82, 121, 168, 0.62);
+  border-radius: 14px;
+  display: flex;
+  gap: 16px;
+  min-height: 168px;
+  padding: 22px;
+}
+
+.admin-profile-avatar {
+  align-items: center;
+  background: linear-gradient(145deg, #ffc14d, #f5a623);
+  border: 4px solid rgba(245, 166, 35, 0.18);
+  border-radius: 50%;
+  box-shadow: 0 8px 22px rgba(245, 166, 35, 0.2);
+  color: #081426;
+  display: inline-flex;
+  flex: 0 0 76px;
+  font-size: 34px;
+  font-weight: 950;
+  height: 76px;
+  justify-content: center;
+  width: 76px;
+}
+
+.admin-profile-overview-copy {
+  min-width: 0;
+}
+
+.admin-profile-overview-copy h3 {
+  color: #f2f7fc;
+  font-size: 24px;
+  margin: 2px 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-profile-overview-copy p {
+  color: #9fb6d0;
+  font-size: 13px;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-profile-meta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.admin-profile-meta span {
+  align-items: center;
+  background: rgba(49, 87, 127, 0.3);
+  border: 1px solid rgba(82, 121, 168, 0.52);
+  border-radius: 999px;
+  color: #b8cbe0;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 850;
+  gap: 5px;
+  padding: 5px 9px;
+}
+
+.admin-profile-meta span:first-child {
+  background: rgba(51, 180, 119, 0.12);
+  border-color: rgba(51, 180, 119, 0.42);
+  color: #87e0b0;
+}
+
+.admin-profile-meta .icon {
+  height: 12px;
+  width: 12px;
+}
+
+.admin-profile-editor {
+  background: rgba(8, 20, 38, 0.35);
+  border: 1px solid rgba(49, 87, 127, 0.72);
+  border-radius: 14px;
+  padding: 18px;
+}
+
+.admin-profile-editor-head {
+  align-items: center;
+  border-bottom: 1px solid rgba(49, 87, 127, 0.72);
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  margin-bottom: 15px;
+  padding-bottom: 13px;
+}
+
+.admin-profile-editor-head h4 {
+  color: #f2f7fc;
+  font-size: 16px;
+  margin: 0;
+}
+
+.admin-profile-editor-head p {
+  color: #8fa3bd;
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
+.admin-profile-editor-head .settings-card-icon {
+  flex-basis: 36px;
+  height: 36px;
+  width: 36px;
+}
+
+@media (max-width: 760px) {
+  .settings-grid > .settings-profile-card,
+  .settings-grid > .admin-change-password-card {
+    grid-column: 1 / -1;
+  }
+
+  .admin-profile-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.settings-form-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-form-wide {
+  grid-column: 1 / -1;
+}
+
+.settings-password-card {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(245, 166, 35, 0.08), transparent 34%),
+    linear-gradient(145deg, #102744 0%, #0d203a 100%);
+  box-shadow: 0 16px 34px rgba(3, 12, 27, 0.16);
+}
+
+.settings-card-head {
+  align-items: center;
+  gap: 14px;
+}
+
+.settings-card-icon {
+  align-items: center;
+  background: rgba(245, 166, 35, 0.12);
+  border: 1px solid rgba(245, 166, 35, 0.38);
+  border-radius: 12px;
+  color: #f5a623;
+  display: inline-flex;
+  flex: 0 0 42px;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.settings-card-icon .icon {
+  height: 21px;
+  width: 21px;
+}
+
+.settings-card-kicker {
+  color: #f5a623;
+  display: block;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  margin-bottom: 3px;
+}
+
+.settings-form-hint {
+  align-items: center;
+  color: #8fa3bd;
+  display: flex;
+  font-size: 12px;
+  gap: 6px;
+  margin: -2px 0 0;
+}
+
+.settings-form-hint .icon {
+  color: #f5a623;
+  height: 14px;
+  width: 14px;
+}
+
+.settings-access {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(49, 87, 127, 0.2), transparent 31%),
+    linear-gradient(145deg, #102744 0%, #0d203a 100%);
+  box-shadow: 0 16px 34px rgba(3, 12, 27, 0.16);
+}
+
+.settings-access > .settings-section-head {
+  align-items: center;
+  gap: 18px;
+}
+
+.settings-access > .settings-section-head h3 {
+  font-size: 20px;
+}
+
+.settings-access > .settings-section-head p {
+  font-size: 13px;
+}
+
+.role-card {
+  background: rgba(8, 20, 38, 0.38);
+  box-shadow: none;
+}
+
+.role-card-top {
+  min-height: 30px;
+}
+
+.role-card-top strong {
+  font-size: 16px;
+}
+
+.role-card-top span {
+  background: rgba(49, 87, 127, 0.32);
+  border: 1px solid rgba(49, 87, 127, 0.7);
+  border-radius: 999px;
+  color: #b7c8dc;
+  font-size: 11px;
+  padding: 5px 9px;
+}
+
+.settings-access .permission-control-list {
+  gap: 12px;
+}
+
+.settings-access .permission-control {
+  background: rgba(8, 20, 38, 0.82);
+  border-color: rgba(49, 87, 127, 0.8);
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 68px;
+  padding: 10px 12px;
+  transition: border-color 160ms ease, transform 160ms ease, background 160ms ease;
+}
+
+.settings-access .permission-control:hover {
+  background: #0b1d35;
+  border-color: #5279a8;
+  transform: translateY(-1px);
+}
+
+.settings-access .permission-control.on {
+  border-color: rgba(245, 166, 35, 0.45);
+}
+
+.permission-feature-copy {
+  align-items: center;
+  display: flex !important;
+  gap: 10px;
+  min-width: 0;
+}
+
+.permission-feature-icon {
+  align-items: center;
+  background: rgba(49, 87, 127, 0.28);
+  border: 1px solid rgba(82, 121, 168, 0.46);
+  border-radius: 9px;
+  color: #9fc1e6;
+  display: inline-flex !important;
+  flex: 0 0 34px;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.permission-feature-icon .icon {
+  height: 17px;
+  width: 17px;
+}
+
+.permission-feature-copy > span:last-child {
+  display: grid !important;
+  gap: 3px;
+  min-width: 0;
+}
+
+.permission-feature-copy strong {
+  color: #f2f7fc;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.permission-feature-copy small {
+  color: #8fa3bd;
+  font-size: 11px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-access .permission-control select,
+.settings-access .permission-fixed-value {
+  min-width: 112px;
+}
+
+.settings-access .permission-fixed-value {
+  min-height: 36px;
+}
+
+@media (max-width: 760px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-grid > .settings-card:nth-child(1),
+  .settings-grid > .settings-card:nth-child(2),
+  .settings-grid > .settings-card:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
+  .settings-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-form-wide {
+    grid-column: auto;
+  }
+
+  .settings-access > .settings-section-head {
+    align-items: stretch;
+  }
+
+  .settings-access .permission-control {
+    grid-template-columns: minmax(0, 1fr) 112px;
+  }
+}
+
+@media (max-width: 520px) {
+  .settings-access .permission-control-list {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-access .permission-control {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .settings-card-head {
+    align-items: flex-start;
+  }
+}
+
+/* Admin profile: compact two-column account workspace. */
+.settings-page {
+  gap: 10px;
+  max-width: 1320px;
+}
+
+.settings-grid {
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-grid > .settings-profile-card {
+  grid-column: 1;
+}
+
+.settings-grid > .settings-card:nth-child(2) {
+  grid-column: 2;
+}
+
+.settings-grid > .admin-change-password-card {
+  grid-column: 1 / -1;
+}
+
+.settings-card,
+.settings-access {
+  border-radius: 9px;
+  padding: 12px;
+}
+
+.compact-card-head {
+  align-items: center;
+  border-bottom: 1px solid rgba(49, 87, 127, 0.72);
+  display: flex;
+  gap: 10px;
+  min-height: 42px;
+  padding-bottom: 9px;
+}
+
+.compact-card-head > div {
+  min-width: 0;
+}
+
+.compact-card-head h3 {
+  color: #f2f7fc;
+  font-size: 15px;
+  line-height: 1.15;
+  margin: 0;
+  text-transform: none;
+}
+
+.compact-card-head p {
+  color: #8fa3bd;
+  font-size: 10px;
+  margin: 3px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-card-head .settings-card-icon {
+  flex: 0 0 36px;
+  height: 36px;
+  width: 36px;
+}
+
+.compact-edit-button {
+  align-items: center;
+  background: rgba(8, 20, 38, 0.65) !important;
+  border: 1px solid #31577f !important;
+  border-radius: 8px !important;
+  color: #f2f7fc !important;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 11px;
+  gap: 6px;
+  min-height: 30px !important;
+  padding: 5px 12px !important;
+}
+
+.compact-edit-button .icon {
+  color: #f5a623;
+  height: 14px;
+  width: 14px;
+}
+
+.admin-profile-layout {
+  align-items: stretch;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(135px, 0.68fr) minmax(0, 1.32fr);
+  padding-top: 10px;
+}
+
+.admin-profile-overview {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(245, 166, 35, 0.16), transparent 52%),
+    #081426;
+  border: 1px solid rgba(82, 121, 168, 0.62);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 204px;
+  padding: 12px 8px;
+  text-align: center;
+}
+
+.admin-profile-avatar-wrap {
+  margin: 0 auto 8px;
+  position: relative;
+}
+
+.admin-profile-avatar {
+  border: 0;
+  flex: 0 0 72px;
+  font-size: 30px;
+  height: 72px;
+  width: 72px;
+}
+
+.admin-profile-camera {
+  align-items: center;
+  background: #102744;
+  border: 1px solid #5279a8;
+  border-radius: 50%;
+  bottom: -2px;
+  color: #f2f7fc;
+  display: inline-flex;
+  height: 25px;
+  justify-content: center;
+  position: absolute;
+  right: -6px;
+  width: 25px;
+}
+
+.admin-profile-camera .icon {
+  height: 13px;
+  width: 13px;
+}
+
+.admin-profile-overview-copy h3 {
+  font-size: 16px;
+  margin: 0 0 2px;
+}
+
+.admin-profile-overview-copy p {
+  font-size: 10px;
+}
+
+.admin-profile-meta {
+  justify-content: center;
+  margin-top: 9px;
+}
+
+.admin-profile-meta span {
+  font-size: 9px;
+  padding: 4px 7px;
+}
+
+.admin-profile-editor {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.admin-profile-form {
+  gap: 8px;
+}
+
+.settings-form-grid {
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-form label > span:first-child {
+  color: #dce8f6;
+  display: block;
+  font-size: 10px;
+  font-weight: 850;
+  margin-bottom: 4px;
+  text-transform: none;
+}
+
+.settings-input-wrap {
+  align-items: center;
+  background: #081426;
+  border: 1px solid #31577f;
+  border-radius: 7px;
+  display: flex !important;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 8px;
+}
+
+.settings-input-wrap:focus-within {
+  border-color: #f5a623;
+  box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.12);
+}
+
+.settings-input-wrap > .icon {
+  color: #9eb6d1;
+  flex: 0 0 15px;
+  height: 15px;
+  width: 15px;
+}
+
+.settings-input-wrap input {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  flex: 1;
+  min-width: 0;
+  padding: 0 !important;
+}
+
+.settings-input-wrap input:focus {
+  outline: 0;
+}
+
+.password-visibility-button {
+  background: transparent !important;
+  border: 0 !important;
+  color: #8fa3bd !important;
+  min-height: 22px !important;
+  padding: 2px !important;
+}
+
+.password-visibility-button .icon {
+  height: 14px;
+  width: 14px;
+}
+
+.settings-form-hint {
+  font-size: 9px;
+  gap: 5px;
+  margin: 0;
+}
+
+.settings-form-hint .icon {
+  flex: 0 0 12px;
+  height: 12px;
+  width: 12px;
+}
+
+.settings-page .settings-card button[type="submit"],
+.settings-page .settings-access button[type="submit"] {
+  border-radius: 7px;
+  font-size: 12px;
+  min-height: 36px;
+}
+
+.security-card-body {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  padding-top: 10px;
+}
+
+.security-card-body .settings-form {
+  min-width: 0;
+}
+
+.security-illustration {
+  height: 108px;
+  position: relative;
+  width: 112px;
+}
+
+.security-shield {
+  align-items: center;
+  background: linear-gradient(145deg, #ffd45d, #f5a623);
+  clip-path: polygon(50% 0, 91% 15%, 83% 70%, 50% 100%, 17% 70%, 9% 15%);
+  color: #8a5b00;
+  display: flex;
+  height: 88px;
+  justify-content: center;
+  left: 12px;
+  position: absolute;
+  top: 8px;
+  width: 76px;
+}
+
+.security-shield::after {
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  clip-path: inherit;
+  content: "";
+  inset: 7px;
+  position: absolute;
+}
+
+.security-shield .icon {
+  height: 27px;
+  position: relative;
+  width: 27px;
+  z-index: 1;
+}
+
+.security-illustration i {
+  background: #f5a623;
+  border-radius: 50%;
+  height: 5px;
+  position: absolute;
+  width: 5px;
+}
+
+.security-illustration i:nth-of-type(1) { left: 5px; top: 23px; }
+.security-illustration i:nth-of-type(2) { right: 7px; top: 10px; }
+.security-illustration i:nth-of-type(3) { right: 1px; top: 54px; }
+.security-illustration i:nth-of-type(4) { bottom: 13px; left: 23px; }
+
+.admin-change-password-card .compact-card-head {
+  position: relative;
+}
+
+.security-mini-illustration {
+  align-items: center;
+  background: rgba(245, 166, 35, 0.12);
+  border: 1px solid rgba(245, 166, 35, 0.35);
+  border-radius: 50%;
+  color: #f5a623;
+  display: inline-flex;
+  height: 34px;
+  justify-content: center;
+  margin-left: auto;
+  width: 34px;
+}
+
+.security-mini-illustration .icon {
+  height: 18px;
+  width: 18px;
+}
+
+.change-password-form {
+  padding-top: 10px;
+}
+
+.change-password-form .settings-form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.settings-access {
+  padding: 12px;
+}
+
+.settings-access > .settings-section-head {
+  align-items: center;
+  border-bottom: 1px solid rgba(49, 87, 127, 0.72);
+  padding-bottom: 9px;
+}
+
+.settings-access > .settings-section-head .compact-card-head {
+  border: 0;
+  min-height: 0;
+  padding: 0;
+}
+
+.settings-access > .settings-section-head .compact-card-head h3 {
+  font-size: 15px;
+}
+
+.settings-access > .settings-section-head .compact-card-head p {
+  font-size: 10px;
+}
+
+.settings-access .role-card {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.settings-access .role-card-top {
+  display: none;
+}
+
+.settings-access .permission-control-list {
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-top: 9px;
+}
+
+.settings-access .permission-control {
+  border-radius: 7px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 47px;
+  padding: 7px 9px;
+}
+
+.settings-access .permission-feature-icon {
+  border-radius: 7px;
+  flex-basis: 30px;
+  height: 30px;
+  width: 30px;
+}
+
+.settings-access .permission-feature-copy {
+  gap: 8px;
+}
+
+.settings-access .permission-feature-copy strong {
+  font-size: 11px;
+  text-transform: none;
+}
+
+.settings-access .permission-feature-copy small {
+  font-size: 9px;
+}
+
+.permission-control-end {
+  align-items: center;
+  display: flex !important;
+  gap: 6px;
+}
+
+.settings-access .permission-fixed-value {
+  border-radius: 999px;
+  font-size: 9px;
+  min-height: 27px;
+  min-width: 99px;
+  padding: 0 9px;
+  text-transform: none;
+}
+
+.settings-access .permission-control select {
+  border-radius: 999px;
+  font-size: 10px;
+  height: 29px;
+  min-width: 76px;
+}
+
+.permission-arrow {
+  color: #8fa3bd;
+  display: inline-flex !important;
+}
+
+.permission-arrow .icon {
+  height: 14px;
+  width: 14px;
+}
+
+@media (max-width: 900px) {
+  .settings-grid > .settings-profile-card,
+  .settings-grid > .settings-card:nth-child(2),
+  .settings-grid > .admin-change-password-card {
+    grid-column: 1 / -1;
+  }
+
+  .admin-profile-layout {
+    grid-template-columns: minmax(130px, 0.5fr) minmax(0, 1.5fr);
+  }
+}
+
+@media (max-width: 620px) {
+  .admin-profile-layout,
+  .security-card-body,
+  .change-password-form .settings-form-grid,
+  .settings-access .permission-control-list {
+    grid-template-columns: 1fr;
+  }
+
+  .security-illustration {
+    display: none;
+  }
+
+  .admin-profile-overview {
+    min-height: 155px;
+  }
+
+  .settings-access > .settings-section-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+/* Final visual pass: give the profile workspace more breathing room and hierarchy. */
+.settings-page {
+  background:
+    radial-gradient(circle at 88% 0%, rgba(38, 82, 132, 0.12), transparent 28%),
+    radial-gradient(circle at 0% 35%, rgba(245, 166, 35, 0.035), transparent 24%);
+  border-radius: 16px;
+  padding: 4px 0 24px;
+}
+
+.settings-grid {
+  align-items: stretch;
+  gap: 14px;
+}
+
+.settings-grid > .settings-card:nth-child(1),
+.settings-grid > .settings-card:nth-child(2) {
+  min-height: 286px;
+}
+
+.settings-card,
+.settings-access {
+  background:
+    linear-gradient(145deg, rgba(18, 43, 77, 0.97), rgba(12, 31, 56, 0.98));
+  border-color: rgba(82, 121, 168, 0.76);
+  box-shadow: 0 16px 34px rgba(2, 10, 23, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.compact-card-head {
+  gap: 12px;
+  min-height: 48px;
+  padding-bottom: 11px;
+}
+
+.compact-card-head .settings-card-icon {
+  background: linear-gradient(145deg, rgba(245, 166, 35, 0.2), rgba(245, 166, 35, 0.08));
+  border-color: rgba(245, 166, 35, 0.62);
+  flex-basis: 40px;
+  height: 40px;
+  width: 40px;
+}
+
+.compact-card-head h3 {
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.compact-card-head p {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.compact-edit-button {
+  border-color: rgba(82, 121, 168, 0.92) !important;
+  font-size: 12px;
+  min-height: 34px !important;
+  padding: 6px 13px !important;
+}
+
+.admin-profile-layout {
+  gap: 14px;
+  grid-template-columns: minmax(155px, 0.72fr) minmax(0, 1.28fr);
+  padding-top: 13px;
+}
+
+.admin-profile-overview {
+  min-height: 214px;
+  padding: 14px 10px;
+}
+
+.admin-profile-avatar {
+  flex-basis: 82px;
+  font-size: 34px;
+  height: 82px;
+  width: 82px;
+}
+
+.admin-profile-overview-copy h3 {
+  font-size: 18px;
+}
+
+.admin-profile-overview-copy p {
+  font-size: 11px;
+}
+
+.admin-profile-meta span {
+  font-size: 10px;
+  padding: 5px 8px;
+}
+
+.admin-profile-editor {
+  align-self: center;
+}
+
+.settings-form {
+  gap: 10px;
+}
+
+.settings-form-grid {
+  gap: 10px;
+}
+
+.settings-form label > span:first-child {
+  font-size: 11px;
+  margin-bottom: 5px;
+}
+
+.settings-input-wrap {
+  min-height: 41px;
+  padding: 0 10px;
+}
+
+.settings-input-wrap input {
+  font-size: 12px;
+}
+
+.settings-form-hint {
+  font-size: 10px;
+}
+
+.settings-page .settings-card button[type="submit"],
+.settings-page .settings-access button[type="submit"] {
+  border-radius: 8px;
+  font-size: 13px;
+  min-height: 42px;
+}
+
+.security-card-body {
+  min-height: 214px;
+  padding-top: 13px;
+}
+
+.security-illustration {
+  transform: scale(1.08);
+}
+
+.security-shield {
+  height: 96px;
+  width: 82px;
+}
+
+.admin-change-password-card {
+  padding-bottom: 14px;
+}
+
+.change-password-form {
+  gap: 13px;
+  padding-top: 14px;
+}
+
+.security-mini-illustration {
+  background: linear-gradient(145deg, rgba(245, 166, 35, 0.2), rgba(245, 166, 35, 0.08));
+  height: 38px;
+  width: 38px;
+}
+
+.settings-access {
+  padding: 14px;
+}
+
+.settings-access > .settings-section-head {
+  padding-bottom: 12px;
+}
+
+.settings-access > .settings-section-head .compact-card-head .settings-card-icon {
+  flex-basis: 38px;
+  height: 38px;
+  width: 38px;
+}
+
+.settings-access > .settings-section-head .compact-card-head h3 {
+  font-size: 17px;
+}
+
+.settings-access > .settings-section-head .compact-card-head p {
+  font-size: 11px;
+}
+
+.settings-access .permission-control-list {
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.settings-access .permission-control {
+  min-height: 58px;
+  padding: 9px 11px;
+}
+
+.settings-access .permission-feature-icon {
+  flex-basis: 34px;
+  height: 34px;
+  width: 34px;
+}
+
+.settings-access .permission-feature-copy strong {
+  font-size: 12px;
+}
+
+.settings-access .permission-feature-copy small {
+  font-size: 10px;
+}
+
+.settings-access .permission-fixed-value {
+  font-size: 10px;
+  min-height: 30px;
+  min-width: 112px;
+}
+
+.settings-access .permission-control select {
+  font-size: 11px;
+  height: 32px;
+  min-width: 82px;
+}
+
+@media (max-width: 620px) {
+  .settings-grid > .settings-card:nth-child(1),
+  .settings-grid > .settings-card:nth-child(2) {
+    min-height: 0;
+  }
+
+  .settings-access .permission-control {
+    min-height: 54px;
+  }
+}
+
+/* Profile view: show the account first; keep editing behind the Edit action. */
+.settings-page {
+  max-width: none;
+  width: 100%;
+}
+
+.settings-grid > .settings-card.settings-profile-card:nth-child(1) {
+  grid-column: 1 / -1;
+  min-height: 0;
+}
+
+.settings-grid > .settings-card.settings-password-card:nth-child(2) {
+  grid-column: 1;
+}
+
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3) {
+  grid-column: 2;
+}
+
+.admin-profile-view {
+  align-items: stretch;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(235px, 0.62fr) minmax(0, 1.38fr);
+  padding-top: 12px;
+}
+
+.admin-profile-view .admin-profile-overview {
+  flex-direction: row;
+  gap: 15px;
+  justify-content: center;
+  min-height: 136px;
+  padding: 15px 18px;
+  text-align: left;
+}
+
+.admin-profile-view .admin-profile-avatar-wrap {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.admin-profile-view .admin-profile-overview-copy {
+  min-width: 0;
+}
+
+.admin-profile-view .admin-profile-meta {
+  justify-content: flex-start;
+}
+
+.admin-profile-detail-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.admin-profile-detail {
+  background: rgba(8, 20, 38, 0.76);
+  border: 1px solid rgba(82, 121, 168, 0.58);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 94px;
+  padding: 12px;
+}
+
+.admin-profile-detail span {
+  color: #8fa3bd;
+  font-size: 10px;
+  font-weight: 850;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.admin-profile-detail strong {
+  color: #f2f7fc;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-profile-editor {
+  border-top: 1px solid rgba(49, 87, 127, 0.72);
+  margin-top: 12px;
+  padding-top: 13px;
+}
+
+@media (max-width: 900px) {
+  .settings-grid > .settings-card.settings-profile-card:nth-child(1),
+  .settings-grid > .settings-card.settings-password-card:nth-child(2),
+  .settings-grid > .settings-card.admin-change-password-card:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
+  .admin-profile-view {
+    grid-template-columns: minmax(190px, 0.6fr) minmax(0, 1.4fr);
+  }
+
+  .admin-profile-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .admin-profile-view {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-profile-view .admin-profile-overview {
+    justify-content: flex-start;
+  }
+}
+
+/* Admin profile hero inspired by the fleet artwork and reference layout. */
+.settings-topbar {
+  display: none;
+}
+
+.settings-page {
+  gap: 12px;
+  max-width: none;
+  padding-top: 0;
+}
+
+.admin-profile-hero {
+  background-color: #08233f;
+  background-position: center 48%;
+  background-size: cover;
+  border: 1px solid rgba(82, 121, 168, 0.7);
+  border-radius: 12px;
+  min-height: 146px;
+  overflow: hidden;
+  padding: 15px 18px 17px;
+  position: relative;
+}
+
+.admin-profile-hero::before {
+  background:
+    linear-gradient(90deg, rgba(4, 18, 36, 0.97) 0%, rgba(4, 22, 42, 0.82) 43%, rgba(4, 22, 42, 0.25) 100%),
+    linear-gradient(0deg, rgba(4, 18, 36, 0.72), transparent 62%);
+  content: "";
+  inset: 0;
+  position: absolute;
+}
+
+.admin-profile-breadcrumb,
+.admin-profile-hero-row {
+  position: relative;
+  z-index: 1;
+}
+
+.admin-profile-breadcrumb {
+  align-items: center;
+  color: #a8bfd8;
+  display: flex;
+  font-size: 10px;
+  font-weight: 750;
+  gap: 7px;
+}
+
+.admin-profile-breadcrumb .icon {
+  color: #f5a623;
+  height: 13px;
+  width: 13px;
+}
+
+.admin-profile-breadcrumb .icon-chevron-right {
+  color: #7494b8;
+  height: 11px;
+  width: 11px;
+}
+
+.admin-profile-breadcrumb strong {
+  color: #e9f2fb;
+}
+
+.admin-profile-hero-row {
+  align-items: flex-end;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-top: 27px;
+}
+
+.admin-profile-hero h1 {
+  color: #f2f7fc;
+  font-size: clamp(30px, 3.4vw, 47px);
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+  margin: 0;
+}
+
+.admin-profile-hero h1 span {
+  color: #f5a623;
+}
+
+.admin-profile-hero p {
+  color: #c2d6eb;
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+.admin-profile-db-pill {
+  align-items: center;
+  background: rgba(8, 20, 38, 0.75);
+  border: 1px solid rgba(82, 121, 168, 0.85);
+  border-radius: 10px;
+  color: #f2f7fc;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 850;
+  gap: 7px;
+  padding: 8px 12px;
+}
+
+.admin-profile-db-pill .icon {
+  color: #f2f7fc;
+  height: 15px;
+  width: 15px;
+}
+
+.settings-grid > .settings-card.settings-profile-card:nth-child(1) {
+  border-radius: 12px;
+}
+
+.settings-grid > .settings-card.settings-password-card:nth-child(2),
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3) {
+  min-height: 230px;
+}
+
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3) {
+  align-self: stretch;
+}
+
+@media (max-width: 620px) {
+  .admin-profile-hero {
+    min-height: 132px;
+    padding: 13px;
+  }
+
+  .admin-profile-hero-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 21px;
+  }
+
+  .admin-profile-hero h1 {
+    font-size: 32px;
+  }
+}
+
+/* Password cards: compact security workspace with a clearer visual rhythm. */
+.settings-grid > .settings-card.settings-password-card:nth-child(2),
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3) {
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.settings-grid > .settings-card.settings-password-card:nth-child(2)::before,
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3)::before {
+  background: linear-gradient(90deg, #f5a623, rgba(245, 166, 35, 0));
+  content: "";
+  height: 2px;
+  left: 18px;
+  position: absolute;
+  right: 42%;
+  top: 0;
+}
+
+.settings-grid > .settings-card.settings-password-card:nth-child(2) .compact-card-head,
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3) .compact-card-head {
+  border-bottom-color: rgba(112, 153, 199, 0.46);
+  gap: 13px;
+  min-height: 58px;
+  padding-bottom: 15px;
+}
+
+.settings-grid > .settings-card.settings-password-card:nth-child(2) .compact-card-head .settings-card-icon,
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3) .compact-card-head .settings-card-icon {
+  background: linear-gradient(145deg, rgba(245, 166, 35, 0.18), rgba(245, 166, 35, 0.06));
+  border-color: rgba(245, 166, 35, 0.62);
+  border-radius: 13px;
+  flex-basis: 44px;
+  height: 44px;
+  width: 44px;
+}
+
+.settings-grid > .settings-card.settings-password-card:nth-child(2) .compact-card-head h3,
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3) .compact-card-head h3 {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.settings-grid > .settings-card.settings-password-card:nth-child(2) .compact-card-head p,
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3) .compact-card-head p {
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 4px;
+}
+
+.security-card-body {
+  align-items: stretch;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  min-height: 0;
+  padding-top: 20px;
+}
+
+.security-card-body .settings-form {
+  align-content: start;
+  gap: 13px;
+}
+
+.settings-grid > .settings-card.settings-password-card:nth-child(2) .settings-form label > span:first-child,
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3) .settings-form label > span:first-child {
+  color: #b8cbe0;
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.settings-grid > .settings-card.settings-password-card:nth-child(2) .settings-input-wrap,
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3) .settings-input-wrap {
+  background: rgba(5, 16, 31, 0.7);
+  border-color: rgba(112, 153, 199, 0.66);
+  border-radius: 11px;
+  min-height: 45px;
+}
+
+.settings-grid > .settings-card.settings-password-card:nth-child(2) .settings-input-wrap:hover,
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3) .settings-input-wrap:hover {
+  border-color: rgba(151, 186, 224, 0.9);
+}
+
+.settings-grid > .settings-card.settings-password-card:nth-child(2) .settings-input-wrap input,
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3) .settings-input-wrap input {
+  color: #f2f7fc;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settings-grid > .settings-card.settings-password-card:nth-child(2) .settings-form-hint {
+  color: #9bb3cc;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.settings-page .settings-grid > .settings-card.settings-password-card button[type="submit"],
+.settings-page .settings-grid > .settings-card.admin-change-password-card button[type="submit"] {
+  border-radius: 11px;
+  box-shadow: 0 8px 18px rgba(245, 166, 35, 0.16);
+  min-height: 45px;
+}
+
+.security-illustration {
+  align-items: center;
+  background: linear-gradient(160deg, rgba(245, 166, 35, 0.11), rgba(8, 20, 38, 0.55));
+  border: 1px solid rgba(245, 166, 35, 0.3);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: auto;
+  justify-content: center;
+  min-height: 154px;
+  overflow: hidden;
+  padding: 14px 10px;
+  position: relative;
+  width: auto;
+}
+
+.security-illustration::before {
+  color: #f4c56d;
+  content: "CUSTOMER ACCESS";
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+  order: -2;
+}
+
+.security-illustration::after {
+  background: rgba(51, 180, 119, 0.12);
+  border: 1px solid rgba(51, 180, 119, 0.36);
+  border-radius: 999px;
+  color: #87e0b0;
+  content: "Protected";
+  font-size: 10px;
+  font-weight: 850;
+  order: 1;
+  padding: 5px 9px;
+}
+
+.security-shield {
+  background: linear-gradient(145deg, #ffd166, #f5a623);
+  border-radius: 18px;
+  clip-path: none;
+  flex: 0 0 58px;
+  height: 58px;
+  left: auto;
+  position: relative;
+  top: auto;
+  width: 58px;
+}
+
+.security-shield::after {
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 13px;
+  clip-path: none;
+  content: "";
+  inset: 6px;
+  position: absolute;
+}
+
+.security-shield .icon {
+  height: 23px;
+  width: 23px;
+}
+
+.security-illustration i {
+  display: none;
+}
+
+.security-mini-illustration {
+  background: linear-gradient(145deg, rgba(245, 166, 35, 0.2), rgba(245, 166, 35, 0.06));
+  border-color: rgba(245, 166, 35, 0.5);
+  border-radius: 13px;
+  height: 42px;
+  width: 42px;
+}
+
+.admin-change-password-card .change-password-form {
+  gap: 15px;
+  padding-top: 20px;
+}
+
+.admin-change-password-card .change-password-form .settings-form-grid {
+  gap: 12px;
+}
+
+@media (max-width: 760px) {
+  .security-card-body {
+    grid-template-columns: minmax(0, 1fr) 112px;
+  }
+}
+
+@media (max-width: 620px) {
+  .security-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .security-illustration {
+    display: none;
+  }
+}
+
+/* Customer access: turn the permission list into a clean feature dashboard. */
+.settings-access {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(245, 166, 35, 0.09), transparent 24%),
+    linear-gradient(145deg, rgba(18, 43, 77, 0.98), rgba(9, 25, 47, 0.99));
+  border-radius: 20px;
+  overflow: hidden;
+  padding: 20px;
+  position: relative;
+}
+
+.settings-access::before {
+  background: linear-gradient(90deg, #f5a623, rgba(245, 166, 35, 0));
+  content: "";
+  height: 2px;
+  left: 20px;
+  position: absolute;
+  right: 58%;
+  top: 0;
+}
+
+.settings-access > .settings-section-head {
+  align-items: center;
+  border-bottom-color: rgba(112, 153, 199, 0.48);
+  gap: 18px;
+  padding-bottom: 18px;
+}
+
+.settings-access > .settings-section-head .compact-card-head {
+  flex: 1 1 auto;
+  gap: 13px;
+  min-width: 0;
+  padding: 0;
+}
+
+.settings-access > .settings-section-head .compact-card-head .settings-card-icon {
+  background: linear-gradient(145deg, rgba(245, 166, 35, 0.24), rgba(245, 166, 35, 0.08));
+  border-color: rgba(245, 166, 35, 0.72);
+  border-radius: 13px;
+  flex-basis: 44px;
+  height: 44px;
+  width: 44px;
+}
+
+.settings-access > .settings-section-head .compact-card-head h3 {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.settings-access > .settings-section-head .compact-card-head p {
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.settings-access-summary {
+  align-items: flex-end;
+  display: grid;
+  flex: 0 0 auto;
+  gap: 3px;
+  justify-items: end;
+}
+
+.settings-access-summary span {
+  color: #f5c66e;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-access-summary small {
+  color: #86a3c3;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.settings-access > .settings-section-head .settings-section-actions {
+  flex: 0 0 auto;
+}
+
+.settings-access > .settings-section-head .settings-section-actions button {
+  border-radius: 11px;
+  box-shadow: 0 9px 20px rgba(245, 166, 35, 0.16);
+  min-height: 44px;
+  padding: 0 16px;
+}
+
+.settings-access .permission-control-list {
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding-top: 18px;
+}
+
+.settings-access .permission-control {
+  align-items: stretch;
+  background: linear-gradient(160deg, rgba(8, 20, 38, 0.8), rgba(12, 35, 63, 0.7));
+  border-color: rgba(112, 153, 199, 0.48);
+  border-radius: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 164px;
+  overflow: hidden;
+  padding: 16px;
+  position: relative;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.settings-access .permission-control::before {
+  background: linear-gradient(90deg, #5a8bc1, rgba(90, 139, 193, 0));
+  content: "";
+  height: 2px;
+  left: 0;
+  position: absolute;
+  right: 40%;
+  top: 0;
+}
+
+.settings-access .permission-control:hover {
+  background: linear-gradient(160deg, rgba(12, 39, 70, 0.96), rgba(12, 35, 63, 0.88));
+  border-color: rgba(151, 186, 224, 0.84);
+  box-shadow: 0 14px 26px rgba(2, 10, 23, 0.2);
+  transform: translateY(-2px);
+}
+
+.settings-access .permission-control.on {
+  border-color: rgba(112, 153, 199, 0.56);
+}
+
+.settings-access .permission-feature-copy {
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.settings-access .permission-feature-icon {
+  background: rgba(84, 139, 207, 0.13);
+  border-color: rgba(111, 165, 224, 0.48);
+  border-radius: 12px;
+  flex: 0 0 40px;
+  height: 40px;
+  width: 40px;
+}
+
+.settings-access .permission-feature-icon .icon {
+  height: 19px;
+  width: 19px;
+}
+
+.settings-access .permission-feature-copy > span:last-child {
+  gap: 5px;
+  min-width: 0;
+}
+
+.settings-access .permission-feature-copy strong {
+  color: #f3f7fc;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.settings-access .permission-feature-copy small {
+  color: #91abc7;
+  font-size: 10px;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.settings-access .permission-control-end {
+  align-items: center;
+  border-top: 1px solid rgba(112, 153, 199, 0.22);
+  gap: 8px;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 12px;
+  width: 100%;
+}
+
+.settings-access .permission-fixed-value,
+.settings-access .permission-control select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-access .permission-fixed-value {
+  justify-content: flex-start;
+  min-height: 31px;
+  padding: 0 10px;
+}
+
+.settings-access .permission-control select {
+  height: 32px;
+}
+
+.settings-access .permission-arrow {
+  color: #9db7d2;
+  flex: 0 0 auto;
+}
+
+.settings-access .permission-control:nth-child(2)::before {
+  background: linear-gradient(90deg, #58c6a1, rgba(88, 198, 161, 0));
+}
+
+.settings-access .permission-control:nth-child(2) .permission-feature-icon {
+  background: rgba(88, 198, 161, 0.13);
+  border-color: rgba(88, 198, 161, 0.44);
+  color: #82e0bb;
+}
+
+.settings-access .permission-control:nth-child(3)::before {
+  background: linear-gradient(90deg, #f5a623, rgba(245, 166, 35, 0));
+}
+
+.settings-access .permission-control:nth-child(3) .permission-feature-icon {
+  background: rgba(245, 166, 35, 0.13);
+  border-color: rgba(245, 166, 35, 0.44);
+  color: #f5c66e;
+}
+
+.settings-access .permission-control:nth-child(4)::before {
+  background: linear-gradient(90deg, #a68cff, rgba(166, 140, 255, 0));
+}
+
+.settings-access .permission-control:nth-child(4) .permission-feature-icon {
+  background: rgba(166, 140, 255, 0.13);
+  border-color: rgba(166, 140, 255, 0.44);
+  color: #c4b7ff;
+}
+
+@media (max-width: 1100px) {
+  .settings-access .permission-control-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .settings-access > .settings-section-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .settings-access-summary {
+    align-items: flex-start;
+    justify-items: start;
+    order: 3;
+    width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .settings-access {
+    border-radius: 16px;
+    padding: 14px;
+  }
+
+  .settings-access .permission-control-list {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-access > .settings-section-head .settings-section-actions,
+  .settings-access > .settings-section-head .settings-section-actions button {
+    width: 100%;
+  }
+}
+
+/* Tighten customer-access tiles so the content reads as one compact control row. */
+.settings-access > .settings-section-head {
+  padding-bottom: 14px;
+}
+
+.settings-access .permission-control-list {
+  gap: 12px;
+  padding-top: 14px;
+}
+
+.settings-access .permission-control {
+  gap: 11px;
+  min-height: 144px;
+  padding: 14px;
+}
+
+.settings-access .permission-control::before {
+  bottom: 14px;
+  top: 14px;
+}
+
+.settings-access .permission-feature-copy {
+  gap: 9px;
+}
+
+.settings-access .permission-feature-icon {
+  border-radius: 12px;
+  flex-basis: 40px;
+  height: 40px;
+  width: 40px;
+}
+
+.settings-access .permission-feature-copy strong {
+  font-size: 14px;
+}
+
+.settings-access .permission-feature-copy small {
+  font-size: 9px;
+  line-height: 1.3;
+}
+
+.settings-access .permission-control-end {
+  margin-top: 2px;
+  padding-top: 9px;
+}
+
+/* Keep each feature title beside its icon for a more natural scan pattern. */
+.settings-access .permission-feature-copy {
+  align-items: flex-start;
+  display: flex !important;
+  flex-direction: row;
+  gap: 11px;
+}
+
+.settings-access .permission-feature-copy > span:last-child {
+  display: grid !important;
+  gap: 5px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.settings-access .permission-control {
+  gap: 13px;
+  min-height: 132px;
+}
+
+.settings-access .permission-feature-icon {
+  flex-basis: 38px;
+  height: 38px;
+  width: 38px;
+}
+
+.settings-access .permission-feature-copy strong {
+  font-size: 14px;
+}
+
+.settings-access .permission-feature-copy small {
+  font-size: 9px;
+}
+
+.settings-access .permission-control-end {
+  margin-top: 0;
+  padding-top: 8px;
+}
+
+.settings-access .permission-feature-inline {
+  align-items: flex-start !important;
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 11px !important;
+  width: 100%;
+}
+
+.settings-access .permission-feature-inline > .permission-feature-icon {
+  flex: 0 0 38px;
+}
+
+.settings-access .permission-feature-inline > span:last-child {
+  display: grid !important;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Customer access refinement: a softer, more premium feature-card treatment. */
+.settings-access {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(84, 139, 207, 0.12), transparent 26%),
+    radial-gradient(circle at 100% 100%, rgba(245, 166, 35, 0.08), transparent 30%),
+    linear-gradient(145deg, #102a4a 0%, #0b1f39 100%);
+  border-color: rgba(115, 158, 207, 0.68);
+  border-radius: 22px;
+  box-shadow: 0 22px 48px rgba(2, 10, 23, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  padding: 22px;
+}
+
+.settings-access::before {
+  background: linear-gradient(90deg, #f7bc4f, rgba(247, 188, 79, 0));
+  height: 3px;
+  left: 22px;
+  right: 62%;
+}
+
+.settings-access > .settings-section-head {
+  border-bottom-color: rgba(149, 184, 221, 0.28);
+  padding-bottom: 19px;
+}
+
+.settings-access > .settings-section-head .compact-card-head .settings-card-icon {
+  background: linear-gradient(145deg, #f7b52f 0%, #e98d1b 100%);
+  border-color: rgba(255, 221, 141, 0.75);
+  box-shadow: 0 10px 20px rgba(245, 166, 35, 0.18);
+  color: #12233d;
+}
+
+.settings-access > .settings-section-head .compact-card-head h3 {
+  font-size: 20px;
+}
+
+.settings-access > .settings-section-head .compact-card-head p {
+  color: #9eb9d6;
+  font-size: 11px;
+}
+
+.settings-access-summary {
+  align-items: center;
+  background: rgba(8, 20, 38, 0.42);
+  border: 1px solid rgba(149, 184, 221, 0.25);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  padding: 8px 11px;
+}
+
+.settings-access-summary::before {
+  background: #64d9a4;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(100, 217, 164, 0.1);
+  content: "";
+  height: 7px;
+  width: 7px;
+}
+
+.settings-access-summary span {
+  color: #f6d28c;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.settings-access-summary small {
+  border-left: 1px solid rgba(149, 184, 221, 0.28);
+  color: #9eb9d6;
+  font-size: 10px;
+  padding-left: 8px;
+}
+
+.settings-access > .settings-section-head .settings-section-actions button {
+  border-radius: 12px;
+  font-size: 12px;
+  min-height: 46px;
+  padding: 0 17px;
+}
+
+.settings-access .permission-control-list {
+  gap: 16px;
+  padding-top: 20px;
+}
+
+.settings-access .permission-control {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(87, 144, 214, 0.13), transparent 35%),
+    rgba(6, 18, 34, 0.62);
+  border-color: rgba(128, 169, 212, 0.34);
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025), 0 12px 24px rgba(2, 10, 23, 0.12);
+  gap: 20px;
+  min-height: 180px;
+  padding: 18px;
+}
+
+.settings-access .permission-control::before {
+  background: #6097d4;
+  bottom: 18px;
+  height: auto;
+  left: 0;
+  right: auto;
+  top: 18px;
+  width: 3px;
+}
+
+.settings-access .permission-control:hover {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(87, 144, 214, 0.2), transparent 38%),
+    rgba(8, 28, 50, 0.84);
+  border-color: rgba(157, 193, 229, 0.68);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 16px 30px rgba(2, 10, 23, 0.2);
+  transform: translateY(-3px);
+}
+
+.settings-access .permission-feature-copy {
+  display: grid !important;
+  gap: 14px;
+  grid-template-columns: 1fr;
+}
+
+.settings-access .permission-feature-icon {
+  border-radius: 14px;
+  flex-basis: 46px;
+  height: 46px;
+  width: 46px;
+}
+
+.settings-access .permission-feature-copy > span:last-child {
+  gap: 6px;
+}
+
+.settings-access .permission-feature-copy strong {
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+.settings-access .permission-feature-copy small {
+  color: #91abc7;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  line-height: 1.45;
+}
+
+.settings-access .permission-control-end {
+  border-top-color: rgba(128, 169, 212, 0.2);
+  padding-top: 13px;
+}
+
+.settings-access .permission-fixed-value {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #f5c66e;
+  font-size: 11px;
+  gap: 7px;
+  justify-content: flex-start;
+  min-height: 0;
+  padding: 0;
+}
+
+.settings-access .permission-fixed-value::before {
+  background: currentColor;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(245, 198, 110, 0.1);
+  content: "";
+  height: 6px;
+  width: 6px;
+}
+
+.settings-access .permission-control select {
+  background: rgba(13, 37, 65, 0.9);
+  border-color: rgba(88, 198, 161, 0.42);
+  border-radius: 9px;
+  color: #a4e5c9;
+  font-size: 11px;
+  font-weight: 850;
+  height: 32px;
+}
+
+.settings-access .permission-arrow {
+  display: none !important;
+}
+
+.settings-access .permission-control:nth-child(2) {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(88, 198, 161, 0.15), transparent 35%),
+    rgba(6, 18, 34, 0.62);
+}
+
+.settings-access .permission-control:nth-child(2)::before {
+  background: #58c6a1;
+}
+
+.settings-access .permission-control:nth-child(3) {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(245, 166, 35, 0.14), transparent 35%),
+    rgba(6, 18, 34, 0.62);
+}
+
+.settings-access .permission-control:nth-child(3)::before {
+  background: #f5a623;
+}
+
+.settings-access .permission-control:nth-child(4) {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(166, 140, 255, 0.15), transparent 35%),
+    rgba(6, 18, 34, 0.62);
+}
+
+.settings-access .permission-control:nth-child(4)::before {
+  background: #a68cff;
+}
+
+@media (max-width: 760px) {
+  .settings-access-summary {
+    align-items: center;
+    justify-items: start;
+    order: 0;
+    width: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .settings-access {
+    border-radius: 17px;
+    padding: 15px;
+  }
+
+  .settings-access > .settings-section-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-access-summary {
+    align-self: flex-start;
+  }
+
+  .settings-access > .settings-section-head .settings-section-actions,
+  .settings-access > .settings-section-head .settings-section-actions button {
+    width: 100%;
+  }
+}
+
+/* Profile Information card: match the supplied 2x2 detail layout. */
+.settings-grid > .settings-card.settings-profile-card:nth-child(1) {
+  padding: 10px;
+}
+
+.settings-profile-card .compact-card-head {
+  min-height: 45px;
+  padding: 0 2px 9px;
+}
+
+.settings-profile-card .compact-card-head .settings-card-icon {
+  background: #f5a623;
+  border-color: #f5a623;
+  color: #081426;
+  flex-basis: 36px;
+  height: 36px;
+  width: 36px;
+}
+
+.settings-profile-card .compact-card-head h3 {
+  font-size: 15px;
+}
+
+.settings-profile-card .compact-card-head p {
+  font-size: 10px;
+}
+
+.settings-profile-card .compact-edit-button {
+  margin-left: 175px;
+}
+
+.settings-profile-card .admin-profile-view {
+  gap: 16px;
+  grid-template-columns: minmax(235px, 0.72fr) minmax(0, 1.28fr);
+  padding-top: 10px;
+}
+
+.settings-profile-card .admin-profile-view .admin-profile-overview {
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 174px;
+  padding: 12px;
+  text-align: center;
+}
+
+.settings-profile-card .admin-profile-view .admin-profile-avatar-wrap {
+  margin: 0 auto 8px;
+}
+
+.settings-profile-card .admin-profile-view .admin-profile-meta {
+  justify-content: center;
+  margin-top: 9px;
+}
+
+.settings-profile-card .admin-profile-detail-grid {
+  align-content: center;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-profile-card .admin-profile-detail {
+  min-height: 62px;
+  padding: 10px 12px;
+}
+
+.settings-profile-card .admin-profile-detail span {
+  font-size: 9px;
+  margin-bottom: 5px;
+}
+
+.settings-profile-card .admin-profile-detail strong {
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .settings-profile-card .compact-edit-button {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 620px) {
+  .settings-profile-card .compact-edit-button {
+    margin-left: auto;
+  }
+
+  .settings-profile-card .admin-profile-view {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Admin profile polish: calmer hierarchy, richer surfaces, and less cramped controls. */
+.workspace > .toast {
+  background: rgba(15, 34, 64, 0.96);
+  backdrop-filter: blur(16px);
+  border-left: 4px solid #ef8f24;
+  border-color: rgba(239, 143, 36, 0.72);
+  border-radius: 14px;
+  bottom: 24px;
+  box-shadow: 0 18px 42px rgba(2, 10, 22, 0.42);
+  max-width: min(380px, calc(100vw - 32px));
+  padding: 13px 16px;
+  right: 24px;
+  top: auto;
+}
+
+.settings-page {
+  gap: 18px;
+  max-width: 1440px;
+  padding: 2px 0 32px;
+}
+
+.admin-profile-hero {
+  background-position: center 42%;
+  border: 1px solid rgba(111, 155, 205, 0.64);
+  border-radius: 20px;
+  box-shadow: 0 20px 46px rgba(2, 10, 22, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  min-height: 176px;
+  padding: 19px 24px 22px;
+}
+
+.admin-profile-hero::before {
+  background:
+    radial-gradient(circle at 82% 12%, rgba(246, 173, 54, 0.2), transparent 25%),
+    linear-gradient(90deg, rgba(4, 18, 36, 0.96) 0%, rgba(4, 22, 42, 0.72) 46%, rgba(4, 22, 42, 0.18) 100%),
+    linear-gradient(0deg, rgba(4, 18, 36, 0.72), transparent 62%);
+}
+
+.admin-profile-breadcrumb {
+  color: #bad0e8;
+  font-size: 11px;
+  gap: 8px;
+}
+
+.admin-profile-hero-row {
+  margin-top: 38px;
+}
+
+.admin-profile-hero h1 {
+  font-size: clamp(34px, 4vw, 52px);
+  letter-spacing: -0.055em;
+}
+
+.admin-profile-hero p {
+  color: #c8d9eb;
+  font-size: 13px;
+  margin-top: 10px;
+}
+
+.admin-profile-db-pill {
+  background: rgba(8, 20, 38, 0.66);
+  border-color: rgba(148, 181, 218, 0.72);
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+  padding: 9px 14px;
+}
+
+.admin-profile-db-pill::before {
+  background: #59d69a;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(89, 214, 154, 0.12);
+  content: "";
+  height: 7px;
+  width: 7px;
+}
+
+.settings-grid {
+  gap: 18px;
+}
+
+.settings-card,
+.settings-access {
+  border-radius: 18px;
+  box-shadow: 0 18px 42px rgba(2, 10, 23, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.settings-grid > .settings-card.settings-profile-card:nth-child(1) {
+  padding: 18px;
+}
+
+.settings-profile-card .compact-card-head {
+  min-height: 54px;
+  padding: 0 0 14px;
+}
+
+.settings-profile-card .compact-card-head .settings-card-icon {
+  border-radius: 13px;
+  flex-basis: 42px;
+  height: 42px;
+  width: 42px;
+}
+
+.settings-profile-card .compact-card-head h3 {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.settings-profile-card .compact-card-head p {
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.settings-profile-card .compact-edit-button {
+  margin-left: auto;
+  border-color: rgba(112, 153, 199, 0.86) !important;
+  border-radius: 999px !important;
+  min-height: 36px !important;
+  padding: 7px 14px !important;
+}
+
+.settings-profile-card .compact-edit-button:hover,
+.settings-profile-card .compact-edit-button:focus-visible {
+  background: rgba(245, 166, 35, 0.14) !important;
+  border-color: rgba(245, 166, 35, 0.72) !important;
+  transform: translateY(-1px);
+}
+
+.settings-profile-card .admin-profile-view {
+  gap: 18px;
+  grid-template-columns: minmax(250px, 0.7fr) minmax(0, 1.3fr);
+  padding-top: 18px;
+}
+
+.settings-profile-card .admin-profile-view .admin-profile-overview {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(245, 166, 35, 0.2), transparent 58%),
+    linear-gradient(145deg, #0b1b32 0%, #081426 100%);
+  border-color: rgba(112, 153, 199, 0.65);
+  border-radius: 15px;
+  min-height: 178px;
+  padding: 18px;
+}
+
+.settings-profile-card .admin-profile-avatar {
+  background: linear-gradient(145deg, #ffd166 0%, #f5a623 100%);
+  box-shadow: 0 12px 28px rgba(245, 166, 35, 0.24);
+  flex-basis: 88px;
+  font-size: 36px;
+  height: 88px;
+  width: 88px;
+}
+
+.settings-profile-card .admin-profile-camera {
+  background: #122b4d;
+  border-color: rgba(148, 181, 218, 0.82);
+  height: 28px;
+  right: -7px;
+  width: 28px;
+}
+
+.settings-profile-card .admin-profile-overview-copy h3 {
+  font-size: 21px;
+  letter-spacing: -0.025em;
+  margin-bottom: 3px;
+}
+
+.settings-profile-card .admin-profile-overview-copy p {
+  color: #a9c0d9;
+  font-size: 12px;
+}
+
+.settings-profile-card .admin-profile-meta {
+  gap: 8px;
+  margin-top: 13px;
+}
+
+.settings-profile-card .admin-profile-meta span {
+  font-size: 10px;
+  padding: 6px 9px;
+}
+
+.settings-profile-card .admin-profile-detail-grid {
+  gap: 12px;
+}
+
+.settings-profile-card .admin-profile-detail {
+  background: linear-gradient(145deg, rgba(8, 20, 38, 0.9), rgba(11, 29, 53, 0.72));
+  border-color: rgba(112, 153, 199, 0.54);
+  border-radius: 13px;
+  min-height: 82px;
+  padding: 14px 15px;
+  position: relative;
+  overflow: hidden;
+}
+
+.settings-profile-card .admin-profile-detail::before {
+  background: linear-gradient(90deg, #f5a623, rgba(245, 166, 35, 0));
+  content: "";
+  height: 2px;
+  left: 0;
+  position: absolute;
+  right: 36%;
+  top: 0;
+}
+
+.settings-profile-card .admin-profile-detail span {
+  color: #91abc7;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+.settings-profile-card .admin-profile-detail strong {
+  font-size: 14px;
+}
+
+.settings-grid > .settings-card.settings-password-card:nth-child(2),
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3) {
+  min-height: 252px;
+  padding: 18px;
+}
+
+.settings-grid > .settings-card.settings-password-card:nth-child(2) .compact-card-head,
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3) .compact-card-head {
+  min-height: 54px;
+  padding-bottom: 14px;
+}
+
+.settings-grid > .settings-card.settings-password-card:nth-child(2) .compact-card-head h3,
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3) .compact-card-head h3 {
+  font-size: 17px;
+}
+
+.security-card-body {
+  min-height: 180px;
+  padding-top: 18px;
+}
+
+.change-password-form {
+  gap: 16px;
+  padding-top: 18px;
+}
+
+.settings-access {
+  padding: 18px;
+}
+
+.settings-access > .settings-section-head {
+  padding-bottom: 15px;
+}
+
+.settings-access .permission-control-list {
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.settings-access .permission-control {
+  background: rgba(8, 20, 38, 0.72);
+  border-color: rgba(112, 153, 199, 0.5);
+  border-radius: 13px;
+  min-height: 64px;
+  padding: 10px 13px;
+}
+
+.settings-access .permission-control:hover {
+  background: rgba(15, 42, 75, 0.86);
+  border-color: rgba(245, 166, 35, 0.7);
+}
+
+@media (max-width: 900px) {
+  .settings-profile-card .admin-profile-view {
+    grid-template-columns: minmax(210px, 0.58fr) minmax(0, 1.42fr);
+  }
+}
+
+@media (max-width: 620px) {
+  .admin-profile-hero {
+    border-radius: 16px;
+    min-height: 150px;
+    padding: 15px;
+  }
+
+  .admin-profile-hero-row {
+    gap: 14px;
+    margin-top: 24px;
+  }
+
+  .admin-profile-hero p {
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .settings-grid > .settings-card.settings-profile-card:nth-child(1),
+  .settings-grid > .settings-card.settings-password-card:nth-child(2),
+  .settings-grid > .settings-card.admin-change-password-card:nth-child(3) {
+    padding: 14px;
+  }
+
+  .settings-profile-card .compact-card-head {
+    align-items: flex-start;
+  }
+
+  .settings-profile-card .compact-edit-button {
+    margin-left: auto;
+  }
+
+  .settings-profile-card .admin-profile-view {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-profile-card .admin-profile-view .admin-profile-overview {
+    min-height: 166px;
+  }
+
+  .settings-access {
+    padding: 14px;
+  }
+
+  .workspace > .toast {
+    bottom: 14px;
+    right: 14px;
+  }
+}
+
+/* Keep the fleet artwork readable inside the wide profile banner. */
+.admin-profile-hero {
+  background-position: center 62%;
+  min-height: clamp(190px, 16vw, 232px);
+}
+
+.admin-profile-hero-row {
+  margin-top: clamp(26px, 3vw, 34px);
+}
+
+@media (max-width: 620px) {
+  .admin-profile-hero {
+    min-height: 176px;
+  }
+
+  .admin-profile-hero-row {
+    margin-top: 24px;
+  }
+}
+
+/* Reduce the repeated orange accents; reserve amber for primary actions. */
+.settings-profile-card .admin-profile-detail::before {
+  background: linear-gradient(90deg, #5c9bd2, rgba(92, 155, 210, 0));
+}
+
+.settings-grid > .settings-card.settings-password-card:nth-child(2)::before,
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3)::before {
+  background: linear-gradient(90deg, #5c9bd2, rgba(92, 155, 210, 0));
+}
+
+.settings-grid > .settings-card.settings-password-card:nth-child(2) .compact-card-head .settings-card-icon,
+.settings-grid > .settings-card.admin-change-password-card:nth-child(3) .compact-card-head .settings-card-icon {
+  background: linear-gradient(145deg, rgba(92, 155, 210, 0.2), rgba(92, 155, 210, 0.06));
+  border-color: rgba(105, 174, 231, 0.58);
+  color: #a8d5f5;
+}
+
+.security-illustration {
+  background: linear-gradient(160deg, rgba(92, 155, 210, 0.12), rgba(8, 20, 38, 0.55));
+  border-color: rgba(92, 155, 210, 0.34);
+}
+
+.security-illustration::before {
+  color: #a8cbea;
+}
+
+.security-shield {
+  background: linear-gradient(145deg, #79c5f2, #3c82bd);
+}
+
+.security-mini-illustration {
+  background: linear-gradient(145deg, rgba(92, 155, 210, 0.2), rgba(92, 155, 210, 0.06));
+  border-color: rgba(92, 155, 210, 0.5);
+}
+
+.settings-access {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(92, 155, 210, 0.1), transparent 24%),
+    linear-gradient(145deg, rgba(18, 43, 77, 0.98), rgba(9, 25, 47, 0.99));
+}
+
+.settings-access::before {
+  background: linear-gradient(90deg, #5c9bd2, rgba(92, 155, 210, 0));
+}
+
+.settings-access > .settings-section-head .compact-card-head .settings-card-icon {
+  background: linear-gradient(145deg, #5c9bd2 0%, #326caa 100%);
+  border-color: rgba(168, 213, 245, 0.72);
+  box-shadow: 0 10px 20px rgba(46, 111, 171, 0.2);
+  color: #f2f8ff;
+}
+
+.settings-access-summary span {
+  color: #b9d9f1;
+}
+
+.settings-access .permission-control:nth-child(3) {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(92, 155, 210, 0.14), transparent 35%),
+    rgba(6, 18, 34, 0.62);
+}
+
+.settings-access .permission-control:nth-child(3)::before {
+  background: linear-gradient(90deg, #5c9bd2, rgba(92, 155, 210, 0));
+}
+
+.settings-access .permission-control:nth-child(3) .permission-feature-icon {
+  background: rgba(92, 155, 210, 0.13);
+  border-color: rgba(92, 155, 210, 0.44);
+  color: #a8d5f5;
+}
+
+.settings-access .permission-fixed-value {
+  color: #b9d9f1;
+}
+
+.settings-access .permission-fixed-value::before {
+  box-shadow: 0 0 0 4px rgba(92, 155, 210, 0.1);
+}
+
+/* Compact customer-access cards. */
+.settings-access {
+  padding: 16px;
+}
+
+.settings-access > .settings-section-head {
+  padding-bottom: 12px;
+}
+
+.settings-access .permission-control-list {
+  gap: 10px;
+  padding-top: 14px;
+}
+
+.settings-access .permission-control {
+  gap: 9px;
+  min-height: 132px;
+  padding: 12px;
+}
+
+.settings-access .permission-control::before {
+  bottom: 12px;
+  top: 12px;
+}
+
+.settings-access .permission-feature-copy {
+  gap: 9px;
+}
+
+.settings-access .permission-feature-icon {
+  border-radius: 10px;
+  flex-basis: 36px;
+  height: 36px;
+  width: 36px;
+}
+
+.settings-access .permission-feature-icon .icon {
+  height: 17px;
+  width: 17px;
+}
+
+.settings-access .permission-control-end {
+  padding-top: 8px;
+}
+
+.settings-access .permission-fixed-value {
+  min-height: 27px;
+}
+
+.settings-access .permission-control select {
+  height: 29px;
+}
+
+/* Keep the feature text below its icon for a cleaner card hierarchy. */
+.settings-access .permission-feature-inline {
+  align-items: flex-start !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  width: 100%;
+}
+
+.settings-access .permission-feature-inline > .permission-feature-icon {
+  flex: 0 0 36px;
+}
+
+.settings-access .permission-feature-inline > span:last-child {
+  display: grid !important;
+  gap: 4px !important;
+  min-width: 0;
+  width: 100%;
+}
+
+.settings-access .permission-feature-inline > span:last-child strong,
+.settings-access .permission-feature-inline > span:last-child small {
+  display: block;
+}
+
+/* Final inline layout: icon on the left, feature text on the right. */
+.settings-access .permission-feature-inline {
+  align-items: flex-start !important;
+  flex-direction: row !important;
+  gap: 9px !important;
+}
+
+.settings-access .permission-feature-inline > span:last-child {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+.settings-access .permission-feature-inline {
+  column-gap: 18px !important;
+  row-gap: 0 !important;
+}
+
+/* Profile hero: keep the fleet artwork subtle and the content dominant. */
+.admin-profile-hero {
+  background-position: center 58%;
+  border-radius: 18px;
+  min-height: 218px;
+  padding: 20px 24px 24px;
+}
+
+.admin-profile-hero::before {
+  background:
+    radial-gradient(circle at 78% 12%, rgba(102, 174, 231, 0.1), transparent 25%),
+    linear-gradient(90deg, rgba(3, 15, 30, 0.98) 0%, rgba(4, 20, 39, 0.9) 38%, rgba(4, 20, 39, 0.72) 70%, rgba(4, 20, 39, 0.8) 100%),
+    linear-gradient(180deg, rgba(4, 17, 34, 0.18), rgba(4, 17, 34, 0.78));
+}
+
+.admin-profile-hero-row {
+  margin-top: 32px;
+}
+
+.admin-profile-hero h1 {
+  text-shadow: 0 3px 18px rgba(1, 8, 18, 0.35);
+}
+
+@media (max-width: 620px) {
+  .admin-profile-hero {
+    min-height: 176px;
+    padding: 15px;
+  }
+
+  .admin-profile-hero-row {
+    margin-top: 24px;
+  }
 }

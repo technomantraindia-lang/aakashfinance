@@ -19,14 +19,6 @@ const marketplaceChats = [
   { listingId: "m1", buyer: "Shree Cargo Movers", seller: "Rajesh Logistics", status: "Negotiating", unread: 2 },
   { listingId: "m2", buyer: "Rajesh Logistics", seller: "Shree Cargo Movers", status: "Interested", unread: 0 }
 ];
-const reportGroups = [
-  ["Finance", "Upcoming EMI, overdue EMI, principal outstanding, closing amount and payment history"],
-  ["Insurance", "Expiring, expired, renewed, pending verification and insurer-wise renewal report"],
-  ["Compliance", "Permit, fitness, PUC and tax expiry report"],
-  ["Caller", "Attempts, connected calls, promises, missed tasks and escalations"],
-  ["Marketplace", "Active listings, enquiries, chats, reserved vehicles, sold vehicles and sale values"],
-  ["Audit", "Who changed what, previous value, new value, date, time and verification remark"]
-];
 const permissionRows = [
   ["View all clients", "Yes", "No", "Assigned only", "No"],
   ["View own fleet", "Yes", "Yes", "Assigned only", "Yes"],
@@ -208,7 +200,6 @@ export {
   listings,
   marketplaceChats,
   permissionRows,
-  reportGroups,
   users,
   vehicles,
   verificationItems

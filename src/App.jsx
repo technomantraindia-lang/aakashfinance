@@ -18,7 +18,6 @@ import {
   buildNextCycleDueTask,
   initialWhatsAppTemplates,
   permissionRows,
-  reportGroups,
   users
 } from "./kuberFinanceCore";
 
@@ -234,19 +233,6 @@ function LoginPage({ onLogin }) {
             </button>
             <button
               type="button"
-              className={role === "caller" ? "active" : ""}
-              onClick={() => { setRole("caller"); setError(""); }}
-              aria-pressed={role === "caller"}
-            >
-              <span className="login-role-check" aria-hidden="true">&#10003;</span>
-              <span className="login-role-icon"><Icon name="phone" /></span>
-              <span className="login-role-text">
-                <strong>Caller</strong>
-                <small>Assigned follow-ups</small>
-              </span>
-            </button>
-            <button
-              type="button"
               className={role === "customer" ? "active" : ""}
               onClick={() => { setRole("customer"); setError(""); }}
               aria-pressed={role === "customer"}
@@ -318,12 +304,9 @@ const navItems = [
   ["clients", "Clients", "people"],
   ["fleet", "Fleet", "truck"],
   ["dues", "Smart Alert", "calendar"],
-  ["verification", "Verification", "check"],
-  ["caller", "Caller", "phone"],
   ["marketplace", "Marketplace", "store"],
   ["chat-requests", "Chat requests", "people"],
-  ["reports", "Reports", "chart"],
-  ["settings", "Settings", "settings"]
+  ["settings", "Admin profile", "settings"]
 ];
 
 const rolePermissionIndex = { Admin: 1, Owner: 2, Caller: 3, Buyer: 4, Customer: 4 };
@@ -333,10 +316,7 @@ const sectionPermissionMap = {
   fleet: "View own fleet",
   dues: "View own fleet",
   documents: "View own fleet",
-  verification: "Verify payment",
-  caller: "Call / WhatsApp",
   marketplace: "Create sale listing",
-  reports: "Owner chat",
   chats: "Owner chat",
   import: "Import Excel"
 };
@@ -630,7 +610,8 @@ async function fetchBackendData(token) {
       id: row.id,
       name: row.name,
       role: row.role,
-      email: row.email ?? ""
+      email: row.email ?? "",
+      mobile: row.mobile ?? row.phone ?? ""
     })) : [],
     rolePermissions: Array.isArray(rawSettings?.rolePermissions) ? rawSettings.rolePermissions : permissionRows,
     reminderSettings: {
@@ -843,7 +824,11 @@ export default function App() {
     );
   }
 
-  return <AdminApp session={session} onLogout={() => { clearSession(); setSession(null); }} />;
+  return <AdminApp session={session} onLogout={() => { clearSession(); setSession(null); }} onSessionUpdate={(updates) => setSession((current) => {
+    const next = { ...current, ...updates };
+    saveSession(next);
+    return next;
+  })} />;
 }
 
 function PrivacyPolicyPage() {
@@ -926,15 +911,16 @@ function PrivacyPolicyPage() {
   );
 }
 
-function AdminApp({ session, onLogout }) {
+function AdminApp({ session, onLogout, onSessionUpdate }) {
   const marketplaceChat = useMarketplaceChat(API_BASE, session.token);
   const [data, setData] = useState(loadData);
-  const [section, setSection] = useState(session.kind === "caller" ? "caller" : "dashboard");
+  const [section, setSection] = useState("dashboard");
   const [lastSavedAt, setLastSavedAt] = useState(null);
   const [saveStatus, setSaveStatus] = useState("Ready");
   const [toast, setToast] = useState("");
-  const [activeReport, setActiveReport] = useState(reportGroups[0][0]);
   const [selectedClientId, setSelectedClientId] = useState(null);
+  const [activeValidation, setActiveValidation] = useState(null);
+  const validationTimerRef = useRef(null);
   const mutationVersionRef = useRef(0);
   const pendingMutationCountRef = useRef(0);
   const mutationQueueRef = useRef(Promise.resolve());
@@ -944,10 +930,8 @@ function AdminApp({ session, onLogout }) {
     return request;
   };
   const visibleNavItems = useMemo(
-    () => session.role === "Caller"
-      ? navItems.filter(([key]) => key === "caller")
-      : navItems,
-    [session.role]
+    () => navItems,
+    []
   );
 
   const totals = useMemo(() => {
@@ -970,11 +954,9 @@ function AdminApp({ session, onLogout }) {
       const expiry = new Date(vehicle.insuranceExpiry);
       return !Number.isNaN(expiry.getTime()) && expiry >= today && expiry <= inThirtyDays;
     });
-    const activeCallers = (data.users ?? []).filter((user) => user.role === "Caller");
-    const callsDueToday = openDues.filter((task) => task.callerId && ["Due", "Overdue", "Escalated", "Promise-to-Pay"].includes(task.status));
     const activeListings = data.listings.filter((listing) => ["Submitted", "Active", "Reserved", "Changes Required"].includes(listing.status));
     const soldVehicles = data.vehicles.filter((vehicle) => vehicle.status === "Sold");
-    return { totalLiability, openDues, overdue, proofPending, pendingListings, trucks, trailers, financedAssets, emiDue, emiOverdue, insuranceExpiring, activeCallers, callsDueToday, activeListings, soldVehicles };
+    return { totalLiability, openDues, overdue, proofPending, pendingListings, trucks, trailers, financedAssets, emiDue, emiOverdue, insuranceExpiring, activeListings, soldVehicles };
   }, [data]);
 
   useEffect(() => {
@@ -1645,12 +1627,15 @@ function AdminApp({ session, onLogout }) {
         return;
       }
       const client = getDataClient(data, clientId);
+      const storedRows = rows
+        .filter((row) => row.validationStatus === "Valid")
+        .map(({ validationStatus, validationIssues, ...row }) => row);
       const imported = {
         id: `ci-${Date.now()}`,
         clientId,
         fileName: file.name,
         importedAt: new Date().toLocaleString("en-IN"),
-        rows
+        rows: storedRows
       };
       const importableRows = rows.filter((row) => row.validationStatus === "Valid" && row.regNo && !isBodyRow(row));
       const importStamp = Date.now();
@@ -1675,6 +1660,9 @@ function AdminApp({ session, onLogout }) {
         newValue: `${newVehicles.length} valid rows, ${invalidCount} invalid rows`,
         remark: `${file.name} | Row-wise validation completed`
       }), "");
+      setActiveValidation({ clientId, rows });
+      if (validationTimerRef.current) window.clearTimeout(validationTimerRef.current);
+      validationTimerRef.current = window.setTimeout(() => setActiveValidation(null), 7000);
       if (invalidCount > 0) {
         setSaveStatus("Error");
         setToast(`${newVehicles.length} valid rows saved. ${invalidCount} rows rejected; see validation details below.`);
@@ -2015,6 +2003,82 @@ function AdminApp({ session, onLogout }) {
     }
   };
 
+  const saveAdminProfile = async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const name = form.get("adminName")?.toString().trim() ?? "";
+    const email = form.get("adminEmail")?.toString().trim().toLowerCase() ?? "";
+    const mobile = form.get("adminMobile")?.toString().trim() ?? "";
+    if (!name || !email) {
+      setToast("Admin name and email are required");
+      return;
+    }
+    setSaveStatus("Saving");
+    try {
+      const response = await fetch(`${API_BASE}/api/users/${encodeURIComponent(session.id)}`, {
+        method: "PUT",
+        headers: authHeaders(session.token, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ name, email, mobile })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error("Admin profile save API is not available on the server. Deploy the latest backend/server.js and restart the API.");
+        }
+        if (response.status === 401) {
+          throw new Error("Your admin session has expired. Please log in again and try saving the profile.");
+        }
+        throw new Error(result.error || result.message || `Admin profile could not be saved (HTTP ${response.status}).`);
+      }
+      setData((current) => ({
+        ...current,
+        users: (current.users ?? []).map((user) => user.id === session.id ? { ...user, name, email, mobile } : user)
+      }));
+      onSessionUpdate?.({ name, email, mobile });
+      setSaveStatus("Database");
+      setToast("Admin profile updated");
+    } catch (err) {
+      setSaveStatus("Error");
+      setToast(err.message || "Admin profile could not be saved.");
+    }
+  };
+
+  const changeAdminPassword = async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const currentPassword = form.get("currentPassword")?.toString() ?? "";
+    const newPassword = form.get("newPassword")?.toString() ?? "";
+    const confirmPassword = form.get("confirmPassword")?.toString() ?? "";
+    if (!currentPassword || !newPassword) {
+      setToast("Current and new password are required");
+      return;
+    }
+    if (newPassword.length < 4) {
+      setToast("New password must be at least 4 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setToast("New password and confirmation do not match");
+      return;
+    }
+    setSaveStatus("Saving");
+    try {
+      const response = await fetch(`${API_BASE}/api/change-password`, {
+        method: "POST",
+        headers: authHeaders(session.token, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ id: session.id, currentPassword, newPassword })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Password could not be changed.");
+      event.currentTarget.reset();
+      setSaveStatus("Database");
+      setToast("Admin password changed successfully");
+    } catch (err) {
+      setSaveStatus("Error");
+      setToast(err.message || "Password could not be changed.");
+    }
+  };
+
   const saveReminderSettings = async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -2211,7 +2275,7 @@ function AdminApp({ session, onLogout }) {
       </aside>
 
       <section className="workspace">
-        <header className="topbar">
+        <header className={`topbar ${section === "settings" ? "settings-topbar" : ""}`}>
           <div>
             <p>Admin access</p>
             <h1>{titleFor(section)}</h1>
@@ -2224,18 +2288,15 @@ function AdminApp({ session, onLogout }) {
 
         {section === "dashboard" && <Dashboard data={data} totals={totals} setSection={openSection} />}
         {section === "clients" && <Clients data={data} addClient={addClient} openClientProfile={openClientProfile} deleteClientAndAccount={deleteClientAndAccount} />}
-        {section === "client-profile" && <ClientProfile data={data} clientId={selectedClientId} backToClients={() => openSection("clients")} importClientExcel={importClientExcel} importClientPdf={importClientPdf} addManualClientVehicle={addManualClientVehicle} deleteClientVehicle={deleteClientVehicle} deleteClientAndAccount={deleteClientAndAccount} />}
+        {section === "client-profile" && <ClientProfile data={data} clientId={selectedClientId} validationRows={activeValidation?.clientId === selectedClientId ? activeValidation.rows : []} backToClients={() => openSection("clients")} importClientExcel={importClientExcel} importClientPdf={importClientPdf} addManualClientVehicle={addManualClientVehicle} deleteClientVehicle={deleteClientVehicle} deleteClientAndAccount={deleteClientAndAccount} />}
         {toast && <button className="toast" onClick={() => setToast("")}>{toast}</button>}
 
         {section === "fleet" && <Fleet data={data} updateVehicleFinance={updateVehicleFinance} updateVehicleCompliance={updateVehicleCompliance} updateVehicleCombination={updateVehicleCombination} createListing={createListing} />}
         {section === "dues" && <Dues data={data} openClientProfile={openClientProfile} />}
-        {section === "verification" && <Verification data={data} updateTaskStatus={updateTaskStatus} />}
-        {section === "caller" && <CallerQueue data={data} saveCallerOutcome={saveCallerOutcome} openWhatsApp={openWhatsApp} updateWhatsAppStatus={updateWhatsAppStatus} />}
         {section === "marketplace" && <Marketplace data={data} updateListingStatus={updateListingStatus} saveSaleClosing={saveSaleClosing} openFleet={() => openSection("fleet")} />}
         {section === "chat-requests" && <MarketplaceChat chat={marketplaceChat} admin />}
-        {section === "reports" && <Reports data={data} activeReport={activeReport} setActiveReport={setActiveReport} />}
         {section === "import" && <ImportRows data={data} importValidRows={importValidRows} lastSavedAt={lastSavedAt} />}
-        {section === "settings" && <Settings data={data} lastSavedAt={lastSavedAt} saveStatus={saveStatus} clearNotifications={clearNotifications} resetDemoData={resetDemoData} exportData={exportData} saveCommonPassword={saveCommonPassword} saveReminderSettings={saveReminderSettings} saveRolePermissions={saveRolePermissions} createCallerAccount={createCallerAccount} deleteCallerAccount={deleteCallerAccount} runCallerAssignment={runCallerAssignment} saveWhatsAppTemplates={saveWhatsAppTemplates} setSection={openSection} />}
+        {section === "settings" && <Settings data={data} session={session} saveAdminProfile={saveAdminProfile} changeAdminPassword={changeAdminPassword} saveCommonPassword={saveCommonPassword} saveRolePermissions={saveRolePermissions} />}
       </section>
     </main>
   );
@@ -2253,15 +2314,12 @@ function Dashboard({ data, totals, setSection }) {
         <Metric label="EMI Due" value={totals.emiDue.length} icon="calendar" onClick={() => setSection("dues")} />
         <Metric label="EMI Overdue" value={totals.emiOverdue.length} icon="calendar" onClick={() => setSection("dues")} />
         <Metric label="Insurance Expiring" value={totals.insuranceExpiring.length} icon="calendar" onClick={() => setSection("dues")} />
-        <Metric label="Active Callers" value={totals.activeCallers.length} icon="phone" onClick={() => setSection("settings")} />
-        <Metric label="Calls Due Today" value={totals.callsDueToday.length} icon="phone" onClick={() => setSection("caller")} />
         <Metric label="Sale Listings" value={totals.activeListings.length} icon="store" onClick={() => setSection("marketplace")} />
         <Metric label="Vehicles Sold" value={totals.soldVehicles.length} icon="store" onClick={() => setSection("marketplace")} />
       </section>
       <section className="quick-strip dashboard-actions">
         {[
           ["Add client", "clients", "people"],
-          ["Caller queue", "caller", "phone"],
           ["Marketplace", "marketplace", "store"]
         ].map(([label, target, icon]) => (
           <button key={target} onClick={() => setSection(target)}>
@@ -2339,11 +2397,10 @@ function Clients({ data, addClient, openClientProfile, deleteClientAndAccount })
         </div>
         <div className="clients-table-scroll">
         <table className="clients-table">
-          <thead><tr><th>Client</th><th>City</th><th>Phone</th><th>Vehicles</th><th>Caller</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Client</th><th>City</th><th>Phone</th><th>Vehicles</th><th>Actions</th></tr></thead>
           <tbody>
             {filteredClients.map((client) => {
               const vehicleCount = data.vehicles.filter((vehicle) => vehicle.clientId === client.id && !isBodyRegNo(vehicle.regNo)).length;
-              const callerName = users.find((user) => user.id === client.callerId)?.name;
               return (
                 <tr key={client.id}>
                   <td>
@@ -2355,7 +2412,6 @@ function Clients({ data, addClient, openClientProfile, deleteClientAndAccount })
                   <td><span className="client-city-pill">{client.city}</span></td>
                   <td className="client-phone-cell">{client.phone}</td>
                   <td><span className="client-count-pill">{vehicleCount}</span></td>
-                  <td>{callerName}</td>
                   <td>
                     <div className="client-row-actions">
                       <button className="client-profile-button" type="button" onClick={() => openClientProfile(client.id)}>
@@ -2371,7 +2427,7 @@ function Clients({ data, addClient, openClientProfile, deleteClientAndAccount })
             })}
             {filteredClients.length === 0 && (
               <tr>
-                <td className="clients-empty-cell" colSpan="6">No clients match your search.</td>
+                <td className="clients-empty-cell" colSpan="5">No clients match your search.</td>
               </tr>
             )}
           </tbody>
@@ -2460,7 +2516,7 @@ function ManualVehicleForm({ client, onSubmit }) {
   );
 }
 
-function ClientProfile({ data, clientId, backToClients, importClientExcel, importClientPdf, addManualClientVehicle, deleteClientVehicle, deleteClientAndAccount }) {
+function ClientProfile({ data, clientId, validationRows = [], backToClients, importClientExcel, importClientPdf, addManualClientVehicle, deleteClientVehicle, deleteClientAndAccount }) {
   const [entryMode, setEntryMode] = useState("excel");
   const client = getDataClient(data, clientId);
 
@@ -2481,21 +2537,14 @@ function ClientProfile({ data, clientId, backToClients, importClientExcel, impor
   // open due for each vehicle/type in the client profile.
   const visibleDues = latestDueTasks(clientDues);
   const clientImports = (data.clientImports ?? []).filter((item) => item.clientId === client.id);
-  const importedAssets = canonicalImportedAssets(
-    clientImports.flatMap((item) => item.rows.map((row) => ({ ...row, importFile: item.fileName, importedAt: item.importedAt })))
-  );
-  const validationRows = importedAssets.filter((row) => Array.isArray(row.validationIssues));
+  const allImportedAssets = clientImports.flatMap((item) => item.rows.map((row) => ({ ...row, importFile: item.fileName, importedAt: item.importedAt })));
+  const importedAssets = canonicalImportedAssets(allImportedAssets);
   const invalidImportRows = validationRows.filter((row) => row.validationStatus === "Invalid");
-  const caller = users.find((user) => user.id === client.callerId);
   const excelClosingTotal = importedAssets.reduce((sum, row) => sum + autoClosingPrincipal(row), 0);
   const totalClosing = excelClosingTotal > 0
     ? excelClosingTotal
     : clientVehicles.reduce((sum, vehicle) => sum + liability(vehicle), 0);
-  const openAmount = visibleDues.filter((task) => task.status !== "Closed").reduce((sum, task) => sum + task.amount, 0);
   const excelLoanTotal = importedAssets.reduce((sum, row) => sum + toNumber(row.loanAmount), 0);
-  const recentActivity = data.callerActivities.filter((activity) =>
-    clientDues.some((task) => task.id === activity.taskId)
-  );
   const saveManualVehicle = (event) => {
     addManualClientVehicle(event, client.id);
     setEntryMode("excel");
@@ -2540,22 +2589,10 @@ function ClientProfile({ data, clientId, backToClients, importClientExcel, impor
           <small>Pending records</small>
         </article>
         <article>
-          <Icon name="money" />
-          <span>Open amount</span>
-          <strong>{formatMoney(openAmount)}</strong>
-          <small>Total outstanding</small>
-        </article>
-        <article>
-          <Icon name="phone" />
-          <span>Caller</span>
-          <strong>{caller?.name ?? "Unassigned"}</strong>
-          <small>Assigned caller</small>
-        </article>
-        <article>
           <Icon name="upload" />
-          <span>Excel assets</span>
-          <strong>{importedAssets.length}</strong>
-          <small>Excel files</small>
+          <span>Excel files</span>
+          <strong>{clientImports.length}</strong>
+          <small>Uploaded files</small>
         </article>
       </section>
 
@@ -2645,7 +2682,6 @@ function ClientProfile({ data, clientId, backToClients, importClientExcel, impor
             <Pair label="Email / Login ID" value={client.email || "Not available"} />
             <Pair label="City" value={client.city} />
             <Pair label="Phone" value={client.phone} />
-            <Pair label="Assigned caller" value={caller?.name ?? "Unassigned"} />
             <Pair label="Closing total" value={formatMoney(totalClosing)} />
             <Pair label="Excel loan total" value={formatMoney(excelLoanTotal)} />
             <Pair label="Last Excel import" value={clientImports[0]?.importedAt ?? "Not imported"} />
@@ -2669,28 +2705,13 @@ function ClientProfile({ data, clientId, backToClients, importClientExcel, impor
         </div>
         {visibleVehicles.length > 0 ? (
           <section className="vehicle-browser">
-            <VehicleFinanceTable vehicles={visibleVehicles} importedAssets={importedAssets} clientName={client.name} onDeleteVehicle={(row) => deleteClientVehicle(row, client.id)} />
+            <VehicleFinanceTable vehicles={visibleVehicles} importedAssets={importedAssets} sourceImportedAssets={allImportedAssets} clientName={client.name} onDeleteVehicle={(row) => deleteClientVehicle(row, client.id)} />
           </section>
         ) : (
           <Empty text="No vehicles found for this client." />
         )}
       </section>
 
-      <Panel title="Recent Caller Activity">
-        <div className="profile-timeline">
-          {recentActivity.map((activity) => (
-            <article key={activity.id}>
-              <div />
-              <p>
-                <strong>{activity.outcome}</strong>
-                <span>{activity.notes}</span>
-                <small>{activity.channel} | {activity.at}</small>
-              </p>
-            </article>
-          ))}
-          {recentActivity.length === 0 && <Empty text="No caller activity recorded yet." />}
-        </div>
-      </Panel>
     </section>
   );
 }
@@ -2868,8 +2889,6 @@ function Dues({ data, openClientProfile }) {
   const [expiryFilter, setExpiryFilter] = useState("PUC");
   const smartAlerts = buildSmartAlerts(data);
   const allExpiryAlerts = buildSmartAlerts(data, true);
-  const expiredAlerts = smartAlerts.filter((alert) => alert.status === "Expired");
-  const soonAlerts = smartAlerts.filter((alert) => ["Today", "Soon"].includes(alert.status));
   const matchesExpiryFilter = (alert) => {
     if (!expiryFilter) return true;
     if (expiryFilter === "Expired") return alert.status === "Expired";
@@ -2881,20 +2900,6 @@ function Dues({ data, openClientProfile }) {
 
   return (
     <section className="dues-board">
-      <div className="dues-summary">
-        <article className="dues-summary-card summary-alerts">
-          <div className="dues-summary-icon"><AlertSvg name="calendar" /></div>
-          <div><span>Vehicle documents</span><strong>{allExpiryAlerts.length}</strong><small>Expiry records tracked</small></div>
-        </article>
-        <article className="dues-summary-card summary-expired">
-          <div className="dues-summary-icon"><AlertSvg name="bell" /></div>
-          <div><span>Expired</span><strong>{expiredAlerts.length}</strong><small>Need attention now</small></div>
-        </article>
-        <article className="dues-summary-card summary-soon">
-          <div className="dues-summary-icon"><AlertSvg name="calendar" /></div>
-          <div><span>Next 10 days</span><strong>{soonAlerts.length}</strong><small>Upcoming renewals</small></div>
-        </article>
-      </div>
       <section className="smart-alert-panel">
         <div className="smart-alert-head">
           <div className="smart-alert-title">
@@ -3025,7 +3030,7 @@ function DueCard({ task, data, callers = [], updateTaskStatus, assignCallerToTas
   );
 }
 
-function VehicleFinanceTable({ vehicles, importedAssets, clientName, onDeleteVehicle }) {
+function VehicleFinanceTable({ vehicles, importedAssets, sourceImportedAssets = importedAssets, clientName, onDeleteVehicle }) {
   const [selectedRow, setSelectedRow] = useState(null);
   const [vehicleSearch, setVehicleSearch] = useState("");
   const searchTerm = vehicleSearch.trim().toLowerCase();
@@ -3106,9 +3111,11 @@ function VehicleFinanceTable({ vehicles, importedAssets, clientName, onDeleteVeh
               <tr className={row.isBodyDetail ? "body-row" : ""} key={`${row.regNo || "vehicle"}-${row.loanAccount || row.displaySrNo}`}>
                 <td>
                   {!row.isBodyDetail && (
-                    <button className="icon-button view-button" type="button" title="View details" aria-label={`View details for ${row.regNo || row.loanAccount || "vehicle"}`} onClick={() => setSelectedRow(row)}>
-                      <Icon name="eye" />
-                    </button>
+                    <>
+                      <button className="icon-button view-button" type="button" title="View details" aria-label={`View details for ${row.regNo || row.loanAccount || "vehicle"}`} onClick={() => setSelectedRow(row)}>
+                        <Icon name="eye" />
+                      </button>
+                    </>
                   )}
                 </td>
                 <td>
@@ -3120,8 +3127,20 @@ function VehicleFinanceTable({ vehicles, importedAssets, clientName, onDeleteVeh
                 </td>
                 <td>
                   {row.isBodyDetail ? (
-                    <span className="body-reg"><span className="body-connector" />BODY</span>
-                  ) : row.regNo || "-"}
+                    <span className="body-reg">
+                      <span className="body-connector" aria-hidden="true" />
+                      <span className="body-vehicle-icon"><Icon name="truck" /></span>
+                      <span className="body-reg-copy">
+                        <strong>{row.parentDetail?.regNo || row.regNo || "-"}</strong>
+                        <small>TRAILER</small>
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="vehicle-reg">
+                      <span className="vehicle-type-icon"><Icon name="truck" /></span>
+                      <strong>{row.regNo || "-"}</strong>
+                    </span>
+                  )}
                 </td>
                 <td>{formatPlainMoney(row.emiAmount)}</td>
                 <td>{row.tenure || "-"}</td>
@@ -3143,12 +3162,14 @@ function VehicleFinanceTable({ vehicles, importedAssets, clientName, onDeleteVeh
           </tbody>
         </table>
       </div>
-      {selectedRow && <VehicleDetailModal row={selectedRow} onClose={() => setSelectedRow(null)} />}
+      {selectedRow && <VehicleDetailModal row={selectedRow} vehicles={vehicles} importedAssets={sourceImportedAssets} onClose={() => setSelectedRow(null)} />}
     </article>
   );
 }
 
-function VehicleDetailModal({ row, onClose }) {
+function VehicleDetailModal({ row, vehicles = [], importedAssets = [], onClose }) {
+  const paidEmi = effectivePaidEmiForDetail(row, vehicles, importedAssets);
+  const bodyPaidEmi = row.bodyDetail ? effectivePaidEmiForDetail(row.bodyDetail, vehicles, importedAssets) : 0;
   return (
     <div className="detail-modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="vehicle-detail-title" onMouseDown={(event) => event.stopPropagation()}>
@@ -3179,68 +3200,67 @@ function VehicleDetailModal({ row, onClose }) {
           )}
         </div>
         <div className="detail-card-grid">
-          <DetailSection title="Registration" rows={[
-            ["Sr. No.", row.srNo],
-            ["Regt. No.", row.regNo],
-            ["Regt. Owner", row.owner],
-            ["Manufacturer", row.manufacturer],
-            ["Model", row.model],
-            ["Yr of mfg", row.yearOfMfg],
-            ["Reg. Date", formatDisplayDate(row.regDate)]
-          ]} />
-          <DetailSection title="Finance" rows={[
-            ["Free/Fin Fin", row.financeStatus],
-            ["Financier's Name", row.financier],
-            ["Loan Acc. No", row.loanAccount],
-            ["Loan Am.", formatMaybeMoney(row.loanAmount)],
-            ["EMI Am.", formatPlainMoney(row.emiAmount)],
-            ["Interest Rate", row.interestRate ? `${row.interestRate}%` : "-"],
-            ["Tenure", row.tenure],
-            ["Paid Emi", effectivePaidEmi(row) || "-"],
-            ["EMI Start", formatDisplayDate(row.emiStart)],
-            ["EMI End", formatDisplayDate(row.emiEnd)],
-            ["Closing Principal", formatAutoClosingPrincipal(row)]
-          ]} />
-          {row.bodyDetail && (
-            <DetailSection title="Body Loan Details" rows={[
-              ["Regt. No.", "BODY"],
-              ["Free/Fin Fin", row.bodyDetail.financeStatus],
-              ["Financier's Name", row.bodyDetail.financier],
-              ["Loan Acc. No", row.bodyDetail.loanAccount],
-              ["Loan Am.", formatMaybeMoney(row.bodyDetail.loanAmount)],
-              ["EMI Am.", formatPlainMoney(row.bodyDetail.emiAmount)],
-              ["Interest Rate", row.bodyDetail.interestRate ? `${row.bodyDetail.interestRate}%` : "-"],
-              ["Tenure", row.bodyDetail.tenure],
-              ["Paid Emi", effectivePaidEmi(row.bodyDetail) || "-"],
-              ["EMI Start", formatDisplayDate(row.bodyDetail.emiStart)],
-              ["EMI End", formatDisplayDate(row.bodyDetail.emiEnd)],
-              ["Closing Principal", formatAutoClosingPrincipal(row.bodyDetail)]
+          <div className="detail-card-column">
+            <DetailSection title="Registration" rows={[
+              ["Sr. No.", row.srNo],
+              ["Regt. No.", row.regNo],
+              ["Regt. Owner", row.owner],
+              ["Manufacturer", row.manufacturer],
+              ["Model", row.model],
+              ["Yr of mfg", row.yearOfMfg],
+              ["Reg. Date", formatDisplayDate(row.regDate)]
             ]} />
-          )}
-          <DetailSection title="Policy" rows={[
-            ["Policy Company", row.policyCompany],
-            ["Policy No.", row.policyNo],
-            ["Policy Start Date", formatDisplayDate(row.policyStart)],
-            ["Policy End Date", formatDisplayDate(row.policyEnd)],
-            ["PUC No.", row.pucNo],
-            ["PUC Expired", formatDisplayDate(row.pucExpired)],
-            ["Fitness Expired", formatDisplayDate(row.fitnessExpired)]
-          ]} />
-          <DetailSection title="Permit" rows={[
-            ["Permit No.", row.permitNo],
-            ["Permit Issue", formatDisplayDate(row.permitIssue)],
-            ["Permit Expired", formatDisplayDate(row.permitExpired)],
-            ["Permit Type", row.permitType],
-            ["National Permit Expired", formatDisplayDate(row.nationalPermitExpired)]
-          ]} />
-        </div>
-        <div className="loan-ledger-grid">
-          <LoanSchedulePanel schedule={row.emiSchedule ?? []} />
-          <LoanHistoryPanel history={row.emiHistory ?? []} />
-        </div>
-        <div className="loan-ledger-grid compliance-ledger-grid">
-          <InsuranceHistoryPanel history={row.insuranceHistory ?? []} />
-          <ComplianceHistoryPanel history={row.complianceHistory ?? []} />
+            {row.bodyDetail && (
+              <DetailSection title="Body Loan Details" rows={[
+                ["Regt. No.", "BODY"],
+                ["Free/Fin Fin", row.bodyDetail.financeStatus],
+                ["Financier's Name", row.bodyDetail.financier],
+                ["Loan Acc. No", row.bodyDetail.loanAccount],
+                ["Loan Am.", formatMaybeMoney(row.bodyDetail.loanAmount)],
+                ["EMI Am.", formatPlainMoney(row.bodyDetail.emiAmount)],
+                ["Interest Rate", row.bodyDetail.interestRate ? `${row.bodyDetail.interestRate}%` : "-"],
+                ["Tenure", row.bodyDetail.tenure],
+                ["Paid Emi", bodyPaidEmi || "-"],
+                ["EMI Start", formatDisplayDate(row.bodyDetail.emiStart)],
+                ["EMI End", formatDisplayDate(row.bodyDetail.emiEnd)],
+                ["Closing Principal", formatAutoClosingPrincipal(row.bodyDetail)]
+              ]} />
+            )}
+            <div className="loan-ledger-grid loan-ledger-grid-single">
+              <LoanSchedulePanel schedule={row.emiSchedule ?? []} />
+            </div>
+          </div>
+          <div className="detail-card-column">
+            <DetailSection title="Finance" rows={[
+              ["Free/Fin Fin", row.financeStatus],
+              ["Financier's Name", row.financier],
+              ["Loan Acc. No", row.loanAccount],
+              ["Loan Am.", formatMaybeMoney(row.loanAmount)],
+              ["EMI Am.", formatPlainMoney(row.emiAmount)],
+              ["Interest Rate", row.interestRate ? `${row.interestRate}%` : "-"],
+              ["Tenure", row.tenure],
+              ["Paid Emi", paidEmi || "-"],
+              ["EMI Start", formatDisplayDate(row.emiStart)],
+              ["EMI End", formatDisplayDate(row.emiEnd)],
+              ["Closing Principal", formatAutoClosingPrincipal(row)]
+            ]} />
+            <DetailSection title="Policy" rows={[
+              ["Policy Company", row.policyCompany],
+              ["Policy No.", row.policyNo],
+              ["Policy Start Date", formatDisplayDate(row.policyStart)],
+              ["Policy End Date", formatDisplayDate(row.policyEnd)],
+              ["PUC No.", row.pucNo],
+              ["PUC Expired", formatDisplayDate(row.pucExpired)],
+              ["Fitness Expired", formatDisplayDate(row.fitnessExpired)]
+            ]} />
+            <DetailSection title="Permit" rows={[
+              ["Permit No.", row.permitNo],
+              ["Permit Issue", formatDisplayDate(row.permitIssue)],
+              ["Permit Expired", formatDisplayDate(row.permitExpired)],
+              ["Permit Type", row.permitType],
+              ["National Permit Expired", formatDisplayDate(row.nationalPermitExpired)]
+            ]} />
+          </div>
         </div>
       </section>
     </div>
@@ -3612,82 +3632,6 @@ function MarketplaceVehicleModal({ listing, vehicle, closing, isAdmin = false, o
   );
 }
 
-function Reports({ data, activeReport, setActiveReport }) {
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
-  const rows = getReportRows(activeReport, data);
-  const filteredRows = rows.filter((row) => {
-    if (!row.date) return !fromDate && !toDate;
-    const date = String(row.date).slice(0, 10);
-    return (!fromDate || date >= fromDate) && (!toDate || date <= toDate);
-  });
-  const exportRows = filteredRows.map(({ date, ...row }) => row);
-  const exportName = activeReport.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-
-  const downloadExcel = () => {
-    const sheet = XLSX.utils.json_to_sheet(exportRows.length ? exportRows : [{ Message: "No records found for the selected date range." }]);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, sheet, activeReport.slice(0, 31));
-    XLSX.writeFile(workbook, `kuber-finance-${exportName}-report.xlsx`);
-  };
-
-  const printPdf = () => {
-    const popup = window.open("", "_blank", "width=1100,height=760");
-    if (!popup) return;
-    const headers = Object.keys(exportRows[0] ?? { Name: "", Status: "", Amount: "", Detail: "" });
-    const body = (exportRows.length ? exportRows : [{ Name: "No records", Status: "", Amount: "", Detail: "No records found for the selected date range." }])
-      .map((row) => `<tr>${headers.map((header) => `<td>${escapeHtml(row[header])}</td>`).join("")}</tr>`).join("");
-    popup.document.write(`<!doctype html><html><head><title>Kuber Finance - ${escapeHtml(activeReport)} Report</title><style>body{font-family:Arial,sans-serif;padding:28px;color:#152238}h1{margin:0 0 6px}p{color:#5d6b7d;margin:0 0 18px}table{border-collapse:collapse;width:100%;font-size:12px}th,td{border:1px solid #cdd6e0;padding:8px;text-align:left;vertical-align:top}th{background:#e8eef5}</style></head><body><h1>Kuber Finance - ${escapeHtml(activeReport)} Report</h1><p>${fromDate || "All dates"} to ${toDate || "All dates"} | ${filteredRows.length} records</p><table><thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table></body></html>`);
-    popup.document.close();
-    popup.focus();
-    popup.onafterprint = () => popup.close();
-    popup.print();
-  };
-
-  return (
-    <section className="two-column">
-      <section className="grid-list reports">
-        {reportGroups.map(([title, detail]) => (
-          <article className={`asset ${activeReport === title ? "selected-card" : ""}`} key={title}>
-            <strong>{title}</strong>
-            <span>{detail}</span>
-            <button onClick={() => setActiveReport(title)}><Icon name="chart" />Open report</button>
-          </article>
-        ))}
-      </section>
-      <Panel title={`${activeReport} Report`}>
-        <div className="report-toolbar">
-          <label>From date<input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /></label>
-          <label>To date<input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
-          <button type="button" onClick={downloadExcel}><Icon name="upload" />Excel</button>
-          <button type="button" onClick={printPdf}><Icon name="upload" />PDF</button>
-        </div>
-        <p className="report-result-count">{filteredRows.length} record{filteredRows.length === 1 ? "" : "s"} in selected range</p>
-        {activeReport === "Audit" ? (
-          <div className="timeline">
-            {filteredRows.map((log) => (
-              <article key={log.id}>
-                <strong>{log.name}</strong>
-                <span>{log.status} | {log.amount}</span>
-                <small>{log.detail}</small>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="table-wrap embedded-table">
-            <table>
-              <thead><tr><th>Name</th><th>Status</th><th>Amount</th><th>Detail</th></tr></thead>
-              <tbody>
-                {filteredRows.map((row) => <tr key={row.id}><td>{row.name}</td><td><Badge label={row.status} /></td><td>{row.amount}</td><td>{row.detail}</td></tr>)}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Panel>
-    </section>
-  );
-}
-
 function ImportRows({ data, importValidRows, lastSavedAt }) {
   const validRows = data.importRows.filter((row) => row.status === "Valid" && row.issue !== "Imported and saved");
   return (
@@ -3724,11 +3668,7 @@ function ImportRows({ data, importValidRows, lastSavedAt }) {
   );
 }
 
-function Settings({ data, lastSavedAt, saveStatus, clearNotifications, resetDemoData, exportData, saveCommonPassword, saveReminderSettings, saveRolePermissions, createCallerAccount, deleteCallerAccount, runCallerAssignment, saveWhatsAppTemplates, setSection }) {
-  const callers = (data.users ?? users).filter((user) => user.role === "Caller");
-  const openDues = data.dueTasks.filter((task) => task.status !== "Closed");
-  const unassignedDues = openDues.filter((task) => !task.callerId);
-  const assignedDues = openDues.length - unassignedDues.length;
+function Settings({ data, session, saveAdminProfile, changeAdminPassword, saveCommonPassword, saveRolePermissions }) {
   const editablePermissionRows = Array.isArray(data.rolePermissions) ? data.rolePermissions : permissionRows;
   const accessRows = editablePermissionRows.map(([feature, admin, owner, caller, buyer]) => ({
     feature,
@@ -3738,113 +3678,123 @@ function Settings({ data, lastSavedAt, saveStatus, clearNotifications, resetDemo
     Customer: buyer
   }));
   const permissionOptions = ["Yes", "No", "Assigned only", "Own fleet", "Optional", "Reports only"];
-  const roleActions = [
-    { role: "Admin", section: "clients", icon: "people", label: "Manage clients", allowed: accessRows.filter((row) => row.Admin !== "No").length },
-    { role: "Caller", section: "caller", icon: "phone", label: "Open queue", allowed: accessRows.filter((row) => row.Caller !== "No").length },
-    { role: "Customer", section: "marketplace", icon: "store", label: "View listings", allowed: accessRows.filter((row) => row.Customer !== "No").length }
+  const customerFleetAccess = accessRows.find((row) => row.feature === "View own fleet")?.Customer || "Yes";
+  const customerFeatures = [
+    { label: "Home", description: "Dashboard and alerts", icon: "home", value: "Always available", fixed: true },
+    { label: "My Fleet", description: "Vehicles and finance details", icon: "truck", value: customerFleetAccess, field: "permission-Customer-View own fleet" },
+    { label: "Due", description: "EMI and expiry reminders", icon: "calendar", value: "Linked to My Fleet", fixed: true },
+    { label: "Profile", description: "Customer account details", icon: "people", value: "Always available", fixed: true }
   ];
+  const adminProfile = data.users?.find((user) => user.id === session.id && user.role === "Admin") ?? session;
+  const [showCommonPassword, setShowCommonPassword] = useState(false);
+  const [visibleAdminPasswords, setVisibleAdminPasswords] = useState({ current: false, next: false, confirm: false });
+  const [profileEditing, setProfileEditing] = useState(false);
+  const toggleAdminPassword = (field) => setVisibleAdminPasswords((current) => ({ ...current, [field]: !current[field] }));
 
   return (
     <section className="settings-page">
-      <section className="settings-hero">
-        <div>
-          <span>System control</span>
-          <h2>Operations settings</h2>
-          <p>Customer login, caller workload and access rules are controlled from here.</p>
-        </div>
-        <div className="settings-hero-actions">
-          <button type="button" onClick={exportData}><Icon name="upload" />Export</button>
-          <button type="button" onClick={clearNotifications}><Icon name="bell" />Clear alerts</button>
+      <section className="admin-profile-hero" style={{ backgroundImage: `url(${loginBackground})` }}>
+        <div className="admin-profile-breadcrumb"><Icon name="home" /><span>Home</span><Icon name="chevron-right" /><strong>Admin Profile</strong></div>
+        <div className="admin-profile-hero-row">
+          <div><h1><span>Admin</span> Profile</h1><p>Manage your account details, security settings and app permissions.</p></div>
+          <div className="admin-profile-db-pill"><Icon name="cloud" />Database</div>
         </div>
       </section>
-
-      <section className="settings-status-grid">
-        <article><Icon name="cloud" /><span>Storage</span><strong>{saveStatus}</strong></article>
-        <article><Icon name="check" /><span>Last saved</span><strong>{lastSavedAt ?? "Ready"}</strong></article>
-        <article><Icon name="phone" /><span>Assigned dues</span><strong>{assignedDues}/{openDues.length}</strong></article>
-        <article><Icon name="bell" /><span>Unassigned</span><strong>{unassignedDues.length}</strong></article>
-      </section>
-
       <section className="settings-grid">
-        <article className="settings-card">
-          <div className="settings-card-head"><Icon name="people" /><div><h3>Customer login password</h3><p>Shared password for all customer accounts until they change it.</p></div></div>
-          <form className="settings-form" onSubmit={saveCommonPassword}>
-            <label>Common password<input name="commonPassword" type="password" placeholder="Set shared password" minLength={4} required autoComplete="new-password" /></label>
-            <button type="submit"><Icon name="check" />Save password</button>
-          </form>
-        </article>
-
-        <article className="settings-card">
-          <div className="settings-card-head"><Icon name="phone" /><div><h3>Caller assignment</h3><p>Create callers and assign unassigned dues with one rule.</p></div></div>
-          <form className="settings-form two" onSubmit={createCallerAccount} autoComplete="off">
-            <label>Caller name<input name="newCallerName" placeholder="Caller name" autoComplete="off" /></label>
-            <label>Caller email<input name="newCallerEmail" type="email" placeholder="caller@kuber.local" autoComplete="off" /></label>
-            <label>Caller password<input name="newCallerPassword" type="password" placeholder="Set password" minLength={4} autoComplete="new-password" /></label>
-            <button type="submit"><Icon name="phone" />Create caller</button>
-          </form>
-          <form className="settings-form assignment-form" onSubmit={runCallerAssignment}>
-            <label>Assignment rule<select name="assignmentMode" defaultValue="permanent-client"><option value="permanent-client">Permanent client-wise</option><option value="round-robin">Round-robin</option><option value="location-wise">Location-wise</option><option value="category-wise">Category-wise</option></select></label>
-            <button type="submit"><Icon name="check" />Assign now</button>
-          </form>
-        </article>
-
-        <article className="settings-card">
-          <div className="settings-card-head"><Icon name="calendar" /><div><h3>Reminder automation</h3><p>Control when EMI, insurance and compliance reminders are created.</p></div></div>
-          <form className="settings-form" onSubmit={saveReminderSettings} key={JSON.stringify(data.reminderSettings ?? {})}>
-            <label className="settings-checkbox"><input name="reminderEnabled" type="checkbox" defaultChecked={data.reminderSettings?.enabled !== false} /><span>Enable automated monitoring</span></label>
-            <div className="settings-form two reminder-fields">
-              <label>Scan frequency (hours)<input name="reminderIntervalHours" type="number" min="1" max="168" step="1" defaultValue={data.reminderSettings?.intervalHours ?? 24} required /></label>
-              <label>Reminder window (days)<input name="reminderWindowDays" type="number" min="1" max="180" step="1" defaultValue={data.reminderSettings?.windowDays ?? 30} required /></label>
+        <article className="settings-card settings-profile-card">
+          <div className="compact-card-head">
+            <span className="settings-card-icon"><Icon name="people" /></span>
+            <div><h3>Admin Profile</h3><p>Your administrator account information and access status.</p></div>
+            <button className="compact-edit-button" type="button" onClick={() => setProfileEditing((value) => !value)}><Icon name="settings" />{profileEditing ? "Close" : "Edit Profile"}</button>
+          </div>
+          <div className="admin-profile-view">
+            <div className="admin-profile-overview">
+              <div className="admin-profile-avatar-wrap"><div className="admin-profile-avatar">{String(adminProfile.name || "A").slice(0, 1).toUpperCase()}</div><span className="admin-profile-camera"><Icon name="camera" /></span></div>
+              <div className="admin-profile-overview-copy">
+                <h3>{adminProfile.name || "Admin"}</h3>
+                <p>{adminProfile.email || "Email not added"}</p>
+                <div className="admin-profile-meta"><span><Icon name="check" />Active</span><span>Full admin access</span></div>
+              </div>
             </div>
-            <button type="submit"><Icon name="check" />Save reminder settings</button>
+            <div className="admin-profile-detail-grid">
+              <div className="admin-profile-detail"><span>Full Name</span><strong>{adminProfile.name || "Not added"}</strong></div>
+              <div className="admin-profile-detail"><span>Mobile Number</span><strong>{adminProfile.mobile || "Not added"}</strong></div>
+              <div className="admin-profile-detail"><span>Email Address</span><strong>{adminProfile.email || "Not added"}</strong></div>
+              <div className="admin-profile-detail"><span>Account Role</span><strong>Administrator</strong></div>
+            </div>
+          </div>
+          {profileEditing && <div className="admin-profile-editor">
+              <div className="admin-profile-editor-head"><div><h4>Edit profile details</h4><p>Update your admin contact information.</p></div><span className="settings-card-icon"><Icon name="settings" /></span></div>
+              <form className="settings-form admin-profile-form" key={`${adminProfile.name ?? ""}|${adminProfile.email ?? ""}|${adminProfile.mobile ?? ""}`} onSubmit={saveAdminProfile}>
+                <div className="settings-form-grid">
+                  <label><span>Full Name</span><span className="settings-input-wrap"><Icon name="people" /><input name="adminName" type="text" defaultValue={adminProfile.name ?? ""} placeholder="Admin name" autoComplete="name" required /></span></label>
+                  <label><span>Mobile Number</span><span className="settings-input-wrap"><Icon name="phone" /><input name="adminMobile" type="tel" defaultValue={adminProfile.mobile ?? ""} placeholder="98765 43210" autoComplete="tel" /></span></label>
+                  <label className="settings-form-wide"><span>Email Address</span><span className="settings-input-wrap"><Icon name="people" /><input name="adminEmail" type="email" defaultValue={adminProfile.email ?? ""} placeholder="admin@kuber.local" autoComplete="email" required /></span></label>
+                </div>
+                <p className="settings-form-hint"><Icon name="info" />Only the admin account owner can update these details.</p>
+                <button type="submit"><Icon name="check" />Save Profile</button>
+              </form>
+          </div>}
+        </article>
+
+        <article className="settings-card settings-password-card">
+          <div className="compact-card-head"><span className="settings-card-icon"><Icon name="lock" /></span><div><h3>Customer Login Password</h3><p>Shared password for all customer accounts until they change it.</p></div></div>
+          <div className="security-card-body">
+          <form className="settings-form" onSubmit={saveCommonPassword}>
+            <label><span>Common Password</span><span className="settings-input-wrap"><Icon name="lock" /><input name="commonPassword" type={showCommonPassword ? "text" : "password"} placeholder="Set shared password" minLength={4} required autoComplete="new-password" /><button className="password-visibility-button" type="button" onClick={() => setShowCommonPassword((value) => !value)} aria-label={showCommonPassword ? "Hide common password" : "Show common password"}><Icon name="eye" /></button></span></label>
+            <p className="settings-form-hint"><Icon name="check" />Minimum 4 characters · Applies to new customer sign-ins</p>
+            <button type="submit"><Icon name="lock" />Save Password</button>
+          </form>
+          <div className="security-illustration" aria-hidden="true"><div className="security-shield"><Icon name="lock" /></div><i /><i /><i /><i /></div>
+          </div>
+        </article>
+
+        <article className="settings-card settings-password-card admin-change-password-card">
+          <div className="compact-card-head"><span className="settings-card-icon"><Icon name="lock" /></span><div><h3>Change Admin Password</h3><p>Use your current password before creating a new one.</p></div><div className="security-mini-illustration" aria-hidden="true"><Icon name="lock" /></div></div>
+          <form className="settings-form change-password-form" onSubmit={changeAdminPassword}>
+            <div className="settings-form-grid">
+              <label><span>Current Password</span><span className="settings-input-wrap"><Icon name="lock" /><input name="currentPassword" type={visibleAdminPasswords.current ? "text" : "password"} placeholder="Enter current password" autoComplete="current-password" required /><button className="password-visibility-button" type="button" onClick={() => toggleAdminPassword("current")} aria-label={visibleAdminPasswords.current ? "Hide current password" : "Show current password"}><Icon name="eye" /></button></span></label>
+              <label><span>New Password</span><span className="settings-input-wrap"><Icon name="lock" /><input name="newPassword" type={visibleAdminPasswords.next ? "text" : "password"} placeholder="At least 4 characters" minLength={4} autoComplete="new-password" required /><button className="password-visibility-button" type="button" onClick={() => toggleAdminPassword("next")} aria-label={visibleAdminPasswords.next ? "Hide new password" : "Show new password"}><Icon name="eye" /></button></span></label>
+              <label><span>Confirm Password</span><span className="settings-input-wrap"><Icon name="lock" /><input name="confirmPassword" type={visibleAdminPasswords.confirm ? "text" : "password"} placeholder="Re-enter new password" minLength={4} autoComplete="new-password" required /><button className="password-visibility-button" type="button" onClick={() => toggleAdminPassword("confirm")} aria-label={visibleAdminPasswords.confirm ? "Hide confirm password" : "Show confirm password"}><Icon name="eye" /></button></span></label>
+            </div>
+            <button type="submit"><Icon name="settings" />Update Admin Password</button>
           </form>
         </article>
-        <WhatsAppTemplatesSettings templates={data.whatsappTemplates ?? initialWhatsAppTemplates} saveTemplates={saveWhatsAppTemplates} />
-      </section>
 
-      <section className="settings-workload">
-        <div className="settings-section-head">
-          <div><h3>Caller workload</h3><p>Live queue split from open due records.</p></div>
-          <button type="button" onClick={() => setSection("caller")}><Icon name="phone" />Open queue</button>
-        </div>
-        <div className="caller-list">
-          {callers.map((caller) => {
-            const count = openDues.filter((task) => task.callerId === caller.id).length;
-            return <article className="caller-workload-row" key={caller.id}><div className="caller-workload-identity"><span className="caller-avatar"><Icon name="phone" /></span><div><strong>{caller.name}</strong><span>{caller.email}</span></div></div><div className="caller-workload-meta"><b>{count} active</b><button className="caller-delete-button" type="button" title={`Delete ${caller.name}`} aria-label={`Delete ${caller.name}`} onClick={() => deleteCallerAccount(caller)}><Icon name="trash" />Delete</button></div></article>;
-          })}
-          {callers.length === 0 && <Empty text="No callers yet. Create a caller above, then run assignment." />}
-        </div>
       </section>
 
       <form className="settings-access" onSubmit={saveRolePermissions}>
         <div className="settings-section-head">
-          <div><h3>Role access</h3><p>Set which role can use each feature, then save permissions.</p></div>
+          <div className="compact-card-head"><span className="settings-card-icon"><Icon name="settings" /></span><div><h3>Customer App Access</h3><p>Control which areas customers can open.</p></div></div>
+          <div className="settings-access-summary" aria-label="Customer access summary"><span>4 sections</span><small>Customer app</small></div>
           <div className="settings-section-actions">
-            <button type="submit"><Icon name="check" />Save permissions</button>
-            <button className="danger" type="button" onClick={resetDemoData}><Icon name="settings" />Reset data</button>
+            <button type="submit"><Icon name="check" />Save Customer Permissions</button>
           </div>
         </div>
         <div className="role-card-grid">
-          {roleActions.map((role) => (
-            <article className="role-card" key={role.role}>
-              <div className="role-card-top"><Icon name={role.icon} /><strong>{role.role}</strong><span>{role.allowed} allowed</span></div>
+          <article className="role-card">
+              <div className="role-card-top"><Icon name="people" /><strong>Customer</strong><span>{customerFeatures.length} features</span></div>
               <div className="permission-control-list">
-                {accessRows.map((row) => {
-                  const value = row[role.role] ?? "No";
-                  const allowed = value !== "No";
+                {customerFeatures.map((feature) => {
+                  const allowed = feature.fixed || feature.value !== "No";
                   return (
-                    <label className={allowed ? "permission-control on" : "permission-control"} key={`${role.role}-${row.feature}`}>
-                      <span>{row.feature}</span>
-                      <select name={`permission-${role.role}-${row.feature}`} defaultValue={value}>
-                        {permissionOptions.map((option) => <option value={option} key={option}>{option}</option>)}
-                      </select>
+                    <label className={allowed ? "permission-control on" : "permission-control"} key={feature.label}>
+                      <span className="permission-feature-copy permission-feature-inline"><span className="permission-feature-icon"><Icon name={feature.icon} /></span><span><strong>{feature.label}</strong><small>{feature.description}</small></span></span>
+                      <span className="permission-control-end">
+                        {feature.fixed ? (
+                          <b className="permission-fixed-value">{feature.value}</b>
+                        ) : (
+                          <select name={feature.field} defaultValue={feature.value}>
+                            {permissionOptions.map((option) => <option value={option} key={option}>{option}</option>)}
+                          </select>
+                        )}
+                        <span className="permission-arrow"><Icon name="chevron-right" /></span>
+                      </span>
                     </label>
                   );
                 })}
               </div>
-              <button type="button" onClick={() => setSection(role.section)}><Icon name={role.icon} />{role.label}</button>
-            </article>
-          ))}
+          </article>
         </div>
       </form>
     </section>
@@ -5026,6 +4976,9 @@ const iconPaths = {
   plus: <path d="M12 5v14M5 12h14" />,
   bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M13.73 21a2 2 0 0 0-3.46 0" /></>,
   eye: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>,
+  lock: <><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
+  camera: <><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" /><circle cx="12" cy="13" r="3" /></>,
+  info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></>,
   search: <><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></>,
   trash: <><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" /><path d="M10 11v6M14 11v6" /></>,
   logout: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5M21 12H9" /></>,
@@ -5455,6 +5408,52 @@ function effectivePaidEmi(row, asOf = new Date()) {
   return Math.min(Math.max(savedPaid, schedulePaid, historyPaid), tenure || schedule.length || history.length || 360);
 }
 
+function storedVehicleForFinanceDetail(row, vehicles = []) {
+  if (!row || !Array.isArray(vehicles) || vehicles.length === 0) return null;
+  const rowReg = normalizeRegNo(baseRegNo(row.regNo));
+  const rowLoan = normalizeRegNo(row.loanAccount || "");
+  const bodyRow = isBodyRow(row);
+  const matchesAssetType = (vehicle) => {
+    const vehicleType = String(vehicle.type || "Truck").toLowerCase();
+    const vehicleIsBody = vehicle.financeSourceIsBody === true || (vehicleType === "trailer" && /body/i.test(String(vehicle.model || "")));
+    return vehicleIsBody === bodyRow;
+  };
+  const exactLoan = rowLoan && vehicles.find((vehicle) => (
+    matchesAssetType(vehicle) &&
+    normalizeRegNo(vehicle.financeSourceLoanAccount || vehicle.loanAccount || "") === rowLoan
+  ));
+  if (exactLoan) return exactLoan;
+  return rowReg
+    ? vehicles.find((vehicle) => matchesAssetType(vehicle) && normalizeRegNo(baseRegNo(vehicle.regNo)) === rowReg)
+    : null;
+}
+
+function importedAssetForFinanceDetail(row, importedAssets = []) {
+  if (!row || !Array.isArray(importedAssets) || importedAssets.length === 0) return null;
+  const rowReg = normalizeRegNo(baseRegNo(row.regNo));
+  const rowLoan = normalizeRegNo(row.loanAccount || "");
+  const bodyRow = isBodyRow(row);
+  const sameAssetType = (asset) => isBodyRow(asset) === bodyRow;
+  const loanMatches = rowLoan
+    ? importedAssets.filter((asset) => sameAssetType(asset) && normalizeRegNo(asset.loanAccount || "") === rowLoan)
+    : [];
+  const candidates = loanMatches.length > 0
+    ? loanMatches
+    : rowReg
+      ? importedAssets.filter((asset) => sameAssetType(asset) && normalizeRegNo(baseRegNo(asset.regNo)) === rowReg)
+      : [];
+  return candidates.reduce((best, asset) => (
+    !best || effectivePaidEmi(asset) > effectivePaidEmi(best) ? asset : best
+  ), null);
+}
+
+function effectivePaidEmiForDetail(row, vehicles = [], importedAssets = []) {
+  const importedPaid = effectivePaidEmi(row);
+  const storedVehicle = storedVehicleForFinanceDetail(row, vehicles);
+  const sourcePaid = effectivePaidEmi(importedAssetForFinanceDetail(row, importedAssets));
+  return Math.max(importedPaid, sourcePaid, effectivePaidEmi(storedVehicle));
+}
+
 function importedFinanceAssetForVehicle(vehicle, importedAssets = []) {
   const vehicleReg = normalizeRegNo(baseRegNo(vehicle.regNo));
   const vehicleLoanAccount = normalizeRegNo(vehicle.financeSourceLoanAccount || vehicle.loanAccount || "");
@@ -5837,9 +5836,19 @@ function canonicalImportedAssets(assets = []) {
     const reg = normalizeRegNo(baseRegNo(asset.regNo));
     const key = `${type}:${loan || reg || String(asset.id || "row")}`;
     const previous = selected.get(key);
-    if (!previous || importedAssetQuality(asset) > importedAssetQuality(previous)) {
+    const winner = !previous || importedAssetQuality(asset) > importedAssetQuality(previous)
+      ? asset
+      : previous;
+    if (!previous) {
       selected.set(key, asset);
+      return;
     }
+    // Keep the trusted finance/closing fields from the best row, but do not
+    // lose a higher paid-EMI count from another matching import snapshot.
+    const highestPaidEmi = Math.max(effectivePaidEmi(asset), effectivePaidEmi(previous));
+    selected.set(key, highestPaidEmi > effectivePaidEmi(winner)
+      ? { ...winner, paidEmi: highestPaidEmi }
+      : winner);
   });
   return [...selected.values()];
 }
@@ -8810,72 +8819,3 @@ function cleanPdfValue(value) {
     .trim();
 }
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function getReportRows(report, data) {
-  if (report === "Finance") {
-    return data.dueTasks.map((task) => ({
-      id: task.id,
-      name: `${task.type} - ${getDataClient(data, task.clientId)?.name ?? task.clientId}`,
-      status: task.status,
-      amount: formatMoney(task.amount),
-      detail: `Due ${formatDisplayDate(task.dueDate)}`,
-      date: task.dueDate
-    }));
-  }
-  if (report === "Insurance") {
-    return data.vehicles.map((vehicle) => ({
-      id: vehicle.id,
-      name: vehicle.regNo,
-      status: vehicle.insuranceExpiry <= "2026-08-31" ? "Due" : "Active",
-      amount: formatMoney(vehicle.overdue),
-      detail: `Insurance expiry ${formatDisplayDate(vehicle.insuranceExpiry)}`,
-      date: vehicle.insuranceExpiry
-    }));
-  }
-  if (report === "Compliance") {
-    return data.vehicles.map((vehicle) => ({
-      id: vehicle.id,
-      name: vehicle.regNo,
-      status: vehicle.permitExpiry <= "2026-08-31" ? "Due" : "Active",
-      amount: "-",
-      detail: `Permit expiry ${formatDisplayDate(vehicle.permitExpiry)}`,
-      date: vehicle.permitExpiry
-    }));
-  }
-  if (report === "Caller") {
-    return data.callerActivities.map((activity) => ({
-      id: activity.id,
-      name: getDataClient(data, data.dueTasks.find((task) => task.id === activity.taskId)?.clientId)?.name ?? activity.taskId,
-      status: activity.outcome,
-      amount: activity.expectedAmount || "-",
-      detail: `${activity.channel} | ${activity.nextFollowUp}`,
-      date: activity.at || activity.nextFollowUp
-    }));
-  }
-  if (report === "Marketplace") {
-    return data.listings.map((listing) => ({
-      id: listing.id,
-      name: listing.title,
-      status: listing.status,
-      amount: formatMoney(listing.price),
-      detail: `${listing.location} | ${listing.condition}`,
-      date: listing.createdAt || ""
-    }));
-  }
-  return data.auditLogs.map((log) => ({
-    id: log.id,
-    name: `${log.module}: ${log.action}`,
-    status: `${log.record} | ${log.oldValue} to ${log.newValue}`,
-    amount: "-",
-    detail: `${log.at} - ${log.remark}`,
-    date: log.at
-  }));
-}
