@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { MarketplaceChat, ChatRequestButton, useMarketplaceChat } from "./MarketplaceChat";
 import loginBackground from "./assets/background.png";
 import myFleetLogo from "./assets/My_Fleet_512x512.png";
@@ -3985,14 +3985,28 @@ function CustomerPortal({ session, onLogout }) {
     () => activeVehiclePool.filter((vehicle) => vehicle.type === "Truck" && !isDuplicateTruckForTrailer(vehicle, activeVehiclePool)),
     [activeVehiclePool]
   );
+  const dashboardVehiclePool = useMemo(
+    () => activeVehiclePool.filter((vehicle) => !customerVehicleFinanceCompleted(vehicle, myImportedAssets)),
+    [activeVehiclePool, myImportedAssets]
+  );
+  const dashboardVehicles = useMemo(
+    () => dashboardVehiclePool.filter((vehicle) => vehicle.type === "Truck" && !isDuplicateTruckForTrailer(vehicle, dashboardVehiclePool)),
+    [dashboardVehiclePool]
+  );
+  const closingVehicles = useMemo(
+    // Match the mobile customer dashboard: total closing is based on every
+    // active owned finance record, while only duplicate Truck rows are removed.
+    () => activeVehiclePool.filter((vehicle) => !isDuplicateTruckForTrailer(vehicle, customerFleetVehicles)),
+    [activeVehiclePool, customerFleetVehicles]
+  );
   const soldVehicles = useMemo(
     () => customerFleetVehicles.filter((vehicle) => vehicle.status === "Sold" && vehicle.type === "Truck" && !isDuplicateTruckForTrailer(vehicle, customerFleetVehicles)),
     [customerFleetVehicles]
   );
 
   const totalLiability = useMemo(
-    () => activeVehicles.reduce((sum, v) => sum + customerVehicleClosingPrincipal(v, myImportedAssets), 0),
-    [activeVehicles, myImportedAssets]
+    () => closingVehicles.reduce((sum, v) => sum + customerVehicleClosingPrincipal(v, myImportedAssets), 0),
+    [closingVehicles, myImportedAssets]
   );
 
   const openDues = myDues.filter(isCustomerActiveTask);
@@ -4225,9 +4239,9 @@ function CustomerPortal({ session, onLogout }) {
         {sectionAllowed && section === "dashboard" && (
           <CustomerDashboard
             client={myClient}
-            vehicles={activeVehicles}
+            vehicles={dashboardVehicles}
+            linkedVehicles={dashboardVehiclePool}
             dues={attentionDues}
-            openDues={attentionDues}
             totalLiability={totalLiability}
             importedAssets={myImportedAssets}
             setSection={openPortalSection}
@@ -4253,7 +4267,7 @@ function CustomerPortal({ session, onLogout }) {
   );
 }
 
-function CustomerDashboard({ client, vehicles, dues, openDues, totalLiability, importedAssets = [], setSection }) {
+function CustomerDashboard({ client, vehicles, linkedVehicles = vehicles, dues, totalLiability, importedAssets = [], setSection }) {
   const overdue = dues.filter((t) => ["Overdue", "Escalated"].includes(t.status));
 
   return (
@@ -4268,15 +4282,11 @@ function CustomerDashboard({ client, vehicles, dues, openDues, totalLiability, i
         </div>
         <ul className="customer-hero-stats">
           <li><span>Vehicles</span><strong>{vehicles.length}</strong><Icon name="truck" /></li>
-          <li><span>Open dues</span><strong>{openDues.length}</strong><Icon name="calendar" /></li>
-          <li><span>Closing total</span><strong>{formatMoney(totalLiability)}</strong><Icon name="money" /></li>
         </ul>
       </div>
 
       <section className="metrics dashboard-metrics customer-metrics">
-        <CustomerMetric label="Vehicles" value={vehicles.length} helper="Total vehicles" icon="truck" onClick={() => setSection("fleet")} />
-        <CustomerMetric label="Open Dues" value={openDues.length} helper="Outstanding dues" icon="calendar" onClick={() => setSection("dues")} />
-        <CustomerMetric label="Closing Total" value={formatMoney(totalLiability)} helper="Total outstanding amount" icon="money" accent />
+        <CustomerMetric label="Closing Total" value={formatMoney(totalLiability)} helper="Finance closing principal" icon="money" accent />
       </section>
 
       {overdue.length > 0 && (
@@ -4288,7 +4298,7 @@ function CustomerDashboard({ client, vehicles, dues, openDues, totalLiability, i
         </div>
       )}
 
-      <section className="split dashboard-split">
+      <section className="split dashboard-split dashboard-split-single">
         <section className="panel customer-summary-panel">
           <div className="customer-panel-head">
             <div><span className="customer-panel-icon"><Icon name="truck" /></span><h2>My Fleet Summary</h2></div>
@@ -4299,46 +4309,40 @@ function CustomerDashboard({ client, vehicles, dues, openDues, totalLiability, i
               <span>Vehicle</span><span>Model</span><span>Status</span><span>Value</span>
             </div>
           )}
-          {vehicles.slice(0, 5).map((v) => (
-            <article className="customer-vehicle-row" key={v.id}>
-              <div className="customer-vehicle-reg"><span><Icon name="truck" /></span>{v.regNo}</div>
-              <div className="customer-vehicle-model">{v.year} {v.make} {v.model}</div>
-              <div className="customer-vehicle-status">
-                <Badge label={v.status} />
-              </div>
-              <div className="customer-vehicle-amount">{formatMoney(customerVehicleClosingPrincipal(v, importedAssets))}</div>
-            </article>
-          ))}
-          {vehicles.length === 0 && <Empty text="No vehicles found for your account." />}
-          {vehicles.length > 0 && <p className="customer-panel-foot">Showing {Math.min(vehicles.length, 5)} of {vehicles.length} vehicles</p>}
-        </section>
-        <section className="panel customer-summary-panel">
-          <div className="customer-panel-head">
-            <div><span className="customer-panel-icon"><Icon name="calendar" /></span><h2>Recent Dues</h2></div>
-            <button type="button" aria-label="View dues" onClick={() => setSection("dues")}><Icon name="chevron-right" /></button>
-          </div>
-          {openDues.length > 0 && (
-            <div className="customer-table-head customer-dues-table-head">
-              <span>Due type</span><span>Details</span><span>Status</span><span>Amount</span>
-            </div>
-          )}
-          {openDues.slice(0, 5).map((task) => {
-            const v = vehicles.find((x) => x.id === task.vehicleId);
+          {vehicles.slice(0, 5).map((v) => {
+            const linkedTrailer = linkedVehicles.find((candidate) => candidate.type === "Trailer" && normalizeRegNo(baseRegNo(candidate.regNo)) === normalizeRegNo(baseRegNo(v.regNo)));
             return (
-              <article className="customer-due-row" key={task.id}>
-                <div>
-                  <strong>{task.type}</strong>
-                  <span>{v?.regNo ?? "—"} · Due {formatDisplayDate(task.dueDate)}</span>
-                </div>
-                <div className="customer-due-right">
-                  <Badge label={task.status} />
-                  <b>{formatMoney(task.amount)}</b>
-                </div>
-              </article>
+              <Fragment key={v.id}>
+                <article className="customer-vehicle-row">
+                  <div className="customer-vehicle-reg"><span><Icon name="truck" /></span>{v.regNo}</div>
+                  <div className="customer-vehicle-model">{v.year} {v.make} {v.model}</div>
+                  <div className="customer-vehicle-status">
+                    <Badge label={customerVehicleStatus(v, importedAssets)} />
+                  </div>
+                  <div className="customer-vehicle-amount">{formatMoney(customerVehicleClosingPrincipal(v, importedAssets))}</div>
+                </article>
+                {linkedTrailer && (
+                  <article className="customer-vehicle-row customer-trailer-row" key={`${v.id}-trailer`}>
+                    <div className="customer-vehicle-reg customer-trailer-reg">
+                      <span className="customer-trailer-arrow" aria-hidden="true">↳</span>
+                      <span className="customer-trailer-icon"><Icon name="truck" /></span>
+                      <div className="customer-trailer-copy">
+                        <strong>{linkedTrailer.regNo}</strong>
+                        <small>Trailer</small>
+                      </div>
+                    </div>
+                    <div className="customer-vehicle-model">Trailer</div>
+                    <div className="customer-vehicle-status">
+                      <Badge label={customerVehicleStatus(linkedTrailer, importedAssets)} />
+                    </div>
+                    <div className="customer-vehicle-amount">{formatMoney(customerVehicleClosingPrincipal(linkedTrailer, importedAssets))}</div>
+                  </article>
+                )}
+              </Fragment>
             );
           })}
-          {openDues.length === 0 && <Empty text="No open dues. All clear!" />}
-          {openDues.length > 0 && <p className="customer-panel-foot">Showing {Math.min(openDues.length, 5)} of {openDues.length} dues</p>}
+          {vehicles.length === 0 && <Empty text="No vehicles found for your account." />}
+          {vehicles.length > 0 && <p className="customer-panel-foot">Showing {Math.min(vehicles.length, 5)} of {vehicles.length} vehicles</p>}
         </section>
       </section>
     </section>
@@ -5444,28 +5448,11 @@ function effectivePaidEmi(row, asOf = new Date()) {
   if (row.paidEmiUnknown === true) return 0;
   const tenure = Math.min(Math.max(Math.round(toNumber(row.tenure)), 0), 360);
   const savedPaid = Math.min(Math.max(Math.round(toNumber(row.paidEmi)), 0), tenure || 360);
-  const today = new Date(asOf);
-  today.setHours(23, 59, 59, 999);
   const schedule = Array.isArray(row.emiSchedule) ? row.emiSchedule : [];
-  const dueFromSchedule = schedule.filter((entry) => {
-    const dueDate = parseDisplayDate(entry?.dueDate);
-    if (!dueDate) return false;
-    dueDate.setHours(0, 0, 0, 0);
-    return dueDate <= today;
-  }).length;
-  const start = parseDisplayDate(row.emiStart);
-  if (!start) return Math.min(Math.max(savedPaid, dueFromSchedule), tenure || schedule.length || 360);
-  start.setHours(0, 0, 0, 0);
-  if (today < start) return Math.max(savedPaid, dueFromSchedule);
-  const maxCount = tenure || 360;
-  let dueCount = 0;
-  for (let index = 0; index < maxCount; index += 1) {
-    const dueDate = new Date(start.getFullYear(), start.getMonth() + index, start.getDate());
-    dueDate.setHours(0, 0, 0, 0);
-    if (dueDate > today) break;
-    dueCount += 1;
-  }
-  return Math.min(Math.max(savedPaid, dueFromSchedule, dueCount), maxCount);
+  const schedulePaid = schedule.filter((entry) => entry?.status === "Paid" || entry?.autoPaid === true).length;
+  const history = Array.isArray(row.emiHistory) ? row.emiHistory : [];
+  const historyPaid = history.filter((entry) => !entry?.status || ["Paid", "Verified", "Auto Paid"].includes(String(entry.status))).length;
+  return Math.min(Math.max(savedPaid, schedulePaid, historyPaid), tenure || schedule.length || history.length || 360);
 }
 
 function importedFinanceAssetForVehicle(vehicle, importedAssets = []) {
@@ -5497,7 +5484,20 @@ function customerVehicleClosingPrincipal(vehicle, importedAssets = []) {
   const importedAsset = importedFinanceAssetForVehicle(vehicle, importedAssets);
   if (importedAsset?.bankClosingPrincipalUnknown === true) return 0;
   const importedClosing = autoClosingPrincipal(importedAsset);
-  if (importedClosing > 0) return importedClosing;
+  const importedRow = importedAsset || {};
+  const hasImportedFinanceData = Boolean(importedAsset && [
+    importedRow.loanAmount,
+    importedRow.emiAmount,
+    importedRow.tenure,
+    importedRow.paidEmi,
+    importedRow.bankClosingPrincipal,
+    importedRow.bank_closing_principal,
+    importedRow.closingPrincipal,
+    importedRow.closing_principal
+  ].some((value) => toNumber(value) > 0));
+  // A completed imported loan legitimately returns 0. Keep that value instead
+  // of falling back to a stale vehicle principal/loan amount.
+  if (hasImportedFinanceData) return importedClosing;
 
   // Keep the customer web total identical to the mobile customer app when
   // the imported row has no usable closing snapshot: apply the extra paid
@@ -5505,10 +5505,7 @@ function customerVehicleClosingPrincipal(vehicle, importedAssets = []) {
   const savedClosing = toNumber(vehicle.principal);
   const emiAmount = toNumber(vehicle.emiAmount);
   const savedPaid = Math.max(0, Math.round(toNumber(vehicle.paidEmi)));
-  const currentPaid = Math.max(
-    effectivePaidEmi(vehicle),
-    customerVehiclePaidEmi(vehicle, importedAssets)
-  );
+  const currentPaid = customerVehiclePaidEmi(vehicle, importedAssets);
   const extraPaidCount = Math.max(currentPaid - savedPaid, 0);
   return savedClosing > 0 && emiAmount > 0 && extraPaidCount > 0
     ? amortizeClosingPrincipal(savedClosing, emiAmount, toNumber(vehicle.interestRate) || BANK_RELEASE_RATE_PERCENT, extraPaidCount)
@@ -5518,11 +5515,27 @@ function customerVehicleClosingPrincipal(vehicle, importedAssets = []) {
 function customerVehiclePaidEmi(vehicle, importedAssets = []) {
   const importedAsset = importedFinanceAssetForVehicle(vehicle, importedAssets);
   if (importedAsset?.paidEmiUnknown === true) return 0;
-  return effectivePaidEmi(importedAsset) || Math.round(toNumber(vehicle.paidEmi));
+  const importedPaid = effectivePaidEmi(importedAsset);
+  return importedPaid > 0 ? importedPaid : effectivePaidEmi(vehicle);
 }
 
 function customerVehicleSource(vehicle, importedAssets = []) {
   return importedFinanceAssetForVehicle(vehicle, importedAssets) ?? vehicle;
+}
+
+function customerVehicleStatus(vehicle, importedAssets = []) {
+  if (vehicle?.status === "Sold") return "Sold";
+  const source = customerVehicleSource(vehicle, importedAssets);
+  if (String(source?.status ?? "").toLowerCase() === "closed" || isClosedFinanceRow(source)) return "Closed";
+  return vehicle?.status || "Active";
+}
+
+function customerVehicleFinanceCompleted(vehicle, importedAssets = []) {
+  const source = customerVehicleSource(vehicle, importedAssets);
+  if (!source) return false;
+  if (String(source.status ?? "").toLowerCase() === "closed" || isClosedFinanceRow(source)) return true;
+  const tenure = Math.round(toNumber(source.tenure));
+  return tenure > 0 && customerVehiclePaidEmi(vehicle, importedAssets) >= tenure;
 }
 
 function customerImportedVehicles(clientId, importedAssets = [], existingVehicles = []) {
@@ -5796,7 +5809,9 @@ function isBodyRegNo(value) {
 }
 
 function isBodyRow(row) {
-  return isBodyRegNo(row?.regNo);
+  const assetType = String(row?.assetType ?? row?.asset_type ?? "").toLowerCase();
+  const model = String(row?.model ?? "").toLowerCase();
+  return isBodyRegNo(row?.regNo) || (assetType === "trailer" && model.includes("body"));
 }
 
 function importedAssetQuality(row = {}) {

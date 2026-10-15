@@ -1332,6 +1332,10 @@ button:disabled {
   align-items: stretch;
 }
 
+.dashboard-split-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .dashboard-split .panel {
   overflow: hidden;
   padding: 0;
@@ -4086,12 +4090,118 @@ textarea {
 }
 
 .customer-shell .customer-fleet-page {
+  gap: 24px;
   min-height: max-content;
   padding-bottom: 56px;
 }
 
+.customer-shell .customer-fleet-summary {
+  gap: 14px;
+}
+
+.customer-shell .customer-fleet-summary > div {
+  background: linear-gradient(145deg, #16345D 0%, #0D203B 100%);
+  border-color: #315B8D;
+  min-height: 92px;
+  padding: 17px 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.customer-shell .customer-fleet-summary > div::before {
+  background: linear-gradient(180deg, #F5A623, #D88600);
+  content: "";
+  inset: 0 auto 0 0;
+  position: absolute;
+  width: 3px;
+}
+
+.customer-shell .customer-fleet-summary span {
+  color: #AFC2DC;
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.customer-shell .customer-fleet-summary strong {
+  font-size: 23px;
+  letter-spacing: -.01em;
+  line-height: 1.15;
+}
+
 .customer-shell .customer-fleet-grid {
   align-items: start;
+  gap: 20px;
+}
+
+.customer-shell .customer-fleet-card {
+  background: linear-gradient(160deg, #122C50 0%, #0B1B32 100%);
+  border-color: #315B8D;
+  border-radius: 20px;
+  box-shadow: 0 20px 44px rgba(2, 10, 22, .3), inset 0 1px 0 rgba(255,255,255,.035);
+  gap: 18px;
+  padding: 22px;
+  position: relative;
+  overflow: hidden;
+}
+
+.customer-shell .customer-fleet-card::before {
+  background: linear-gradient(90deg, #F5A623, rgba(245,166,35,0));
+  content: "";
+  height: 3px;
+  inset: 0 24% auto 0;
+  position: absolute;
+}
+
+.customer-shell .customer-fleet-card-head {
+  align-items: center;
+  border-bottom: 1px solid rgba(49,91,141,.72);
+  padding-bottom: 16px;
+}
+
+.customer-shell .customer-fleet-card-head strong {
+  font-size: 20px;
+}
+
+.customer-shell .customer-fleet-card-head span {
+  color: #AFC2DC;
+  font-size: 13px;
+}
+
+.customer-shell .customer-fleet-details {
+  background: rgba(6, 19, 37, .38);
+  border: 1px solid rgba(49,91,141,.62);
+  border-radius: 14px;
+  gap: 15px 18px;
+  padding: 15px;
+}
+
+.customer-shell .customer-fleet-details dt {
+  color: #9FB5D2;
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.customer-shell .customer-fleet-details dd {
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.customer-shell .customer-sold-action {
+  border-color: rgba(94,211,155,.55);
+}
+
+.customer-shell .customer-sold-action summary {
+  background: rgba(24,91,76,.48);
+  color: #F5A623;
+  padding: 13px 14px;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.customer-shell .customer-sold-action summary:hover {
+  background: rgba(37,117,96,.62);
+  color: #FFD166;
 }
 
 /* Customer Due alerts mirror the mobile customer alert rules. */
@@ -4691,7 +4801,7 @@ textarea {
 .customer-hero-stats {
   display: grid;
   gap: 0;
-  grid-template-columns: repeat(3, auto);
+  grid-template-columns: auto;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -4733,7 +4843,7 @@ textarea {
 
 .customer-metrics {
   gap: 16px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   margin-top: 0;
 }
 
@@ -4894,6 +5004,10 @@ textarea {
   grid-template-columns: 1.08fr 1.08fr 0.72fr 1fr;
 }
 
+.customer-fleet-table-head span:last-child {
+  text-align: right;
+}
+
 .customer-dues-table-head,
 .customer-due-row {
   grid-template-columns: 0.82fr 1.52fr 0.9fr 0.9fr;
@@ -4938,6 +5052,53 @@ textarea {
   width: 18px;
 }
 
+.customer-trailer-row {
+  background: rgba(12, 30, 56, 0.42);
+  border-top: 1px dashed rgba(42, 71, 111, 0.9);
+  min-height: 56px;
+  padding-left: 18px;
+}
+
+.customer-trailer-reg {
+  color: #C3D2E5;
+  gap: 8px;
+  padding-left: 34px;
+}
+
+.customer-trailer-arrow {
+  background: transparent !important;
+  color: #F0A500;
+  display: inline-block !important;
+  font-size: 20px;
+  height: auto !important;
+  line-height: 1;
+  width: auto !important;
+}
+
+.customer-trailer-icon {
+  background: #17355B !important;
+  height: 30px !important;
+  width: 30px !important;
+}
+
+.customer-trailer-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.customer-trailer-copy strong {
+  color: #F0A500;
+  font-size: 13px;
+}
+
+.customer-trailer-copy small {
+  color: #8FA3BD;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .customer-vehicle-model {
   color: #EDF3FB;
   font-size: 14px;
@@ -4950,6 +5111,7 @@ textarea {
 .customer-vehicle-amount {
   font-size: 15px;
   justify-self: end;
+  text-align: right;
 }
 
 .customer-due-row {
@@ -5949,7 +6111,7 @@ textarea {
   }
 
   .customer-hero-stats {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: 1fr;
     width: 100%;
   }
 
