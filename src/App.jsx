@@ -387,6 +387,17 @@ function parseJsonArray(value) {
   }
 }
 
+function listingPhotoSrc(photo) {
+  if (!photo) return "";
+  const source = typeof photo === "string"
+    ? photo
+    : photo.dataUrl || photo.data_url || photo.uri || photo.url || photo.base64 || "";
+  if (!source) return "";
+  return String(source).startsWith("data:") || String(source).startsWith("file:") || String(source).startsWith("content:") || String(source).startsWith("blob:") || String(source).startsWith("http")
+    ? String(source)
+    : `data:${photo.mimeType || photo.mime_type || "image/jpeg"};base64,${source}`;
+}
+
 function loadData() {
   return emptyAppData();
 }
@@ -394,7 +405,7 @@ function loadData() {
 async function fetchBackendData(token) {
   const fetchJson = async (path, required = true) => {
     try {
-      const response = await fetch(`${API_BASE}/api${path}`, { headers: authHeaders(token) });
+      const response = await fetch(`${API_BASE}/api${path}`, { headers: authHeaders(token), cache: "no-store" });
       if (!response.ok) {
         const result = await response.json().catch(() => ({}));
         if (required) {
@@ -411,7 +422,7 @@ async function fetchBackendData(token) {
     }
   };
 
-  const [rawClients, rawVehicles, rawDues, rawListings, rawCaller, rawAudit, rawImports, rawClientImports, rawDocuments, rawVerificationItems, rawSaleClosings, rawMarketplaceThreads, rawUsers, rawSettings, rawWhatsAppTemplates, rawWhatsAppLogs] = await Promise.all([
+  const [rawClients, rawVehicles, rawDues, rawListings, rawCaller, rawAudit, rawImports, rawClientImports, rawDocuments, rawVerificationItems, rawSaleClosings, rawMarketplaceThreads, rawUsers, rawSettings, rawWhatsAppTemplates, rawWhatsAppLogs, rawMarketplaceInterests] = await Promise.all([
     fetchJson("/clients"),
     fetchJson("/vehicles"),
     fetchJson("/dues"),
@@ -427,10 +438,11 @@ async function fetchBackendData(token) {
     fetchJson("/users", false),
     fetchJson("/settings", false),
     fetchJson("/whatsapp-templates", false),
-    fetchJson("/whatsapp-logs", false)
+    fetchJson("/whatsapp-logs", false),
+    fetchJson("/marketplace-interests", false)
   ]);
 
-  return deduplicateFinanceRecords({
+  const loadedData = {
     ...emptyAppData(),
     clients: Array.isArray(rawClients) ? rawClients.map((row) => ({
       id: row.id,
@@ -498,6 +510,11 @@ async function fetchBackendData(token) {
       id: row.id,
       vehicleId: row.vehicle_id ?? row.vehicleId ?? "",
       title: row.title ?? "",
+      isOwner: Boolean(row.is_owner ?? row.isOwner),
+      registrationNo: row.registration_no ?? row.registration ?? "",
+      vehicleType: row.vehicle_type ?? row.asset_type ?? "",
+      vehicleMake: row.vehicle_make ?? "",
+      vehicleModel: row.vehicle_model ?? "",
       price: Number(row.price ?? 0),
       location: row.location ?? "",
       status: row.status ?? "Active",
@@ -577,6 +594,8 @@ async function fetchBackendData(token) {
       bankNoc: row.bankNoc ?? row.bank_noc ?? null,
       ownershipTransfer: row.ownershipTransfer ?? row.ownership_transfer ?? null,
       soldDate: row.soldDate ?? row.sold_date ?? "",
+      buyerName: row.buyerName ?? row.buyer_name ?? "",
+      soldType: row.soldType ?? row.sold_type ?? "",
       status: row.status ?? "Estimated",
       updatedAt: row.updatedAt ?? row.updated_at ?? ""
     })) : [],
@@ -590,6 +609,23 @@ async function fetchBackendData(token) {
       reported: Boolean(row.reported),
       blocked: Boolean(row.blocked),
       updatedAt: row.updatedAt ?? row.updated_at ?? ""
+    })) : [],
+    marketplaceInterests: Array.isArray(rawMarketplaceInterests) ? rawMarketplaceInterests.map((row) => ({
+      id: row.id,
+      listingId: row.listingId ?? row.listing_id ?? "",
+      vehicleId: row.vehicleId ?? row.vehicle_id ?? "",
+      requesterClientId: row.requesterClientId ?? row.requester_client_id ?? "",
+      name: row.name ?? "",
+      phone: row.phone ?? "",
+      email: row.email ?? "",
+      address: row.address ?? "",
+      message: row.message ?? "",
+      messages: Array.isArray(row.messages) ? row.messages : [],
+      approvedAt: row.approvedAt ?? row.details_shared_at ?? "",
+      listingTitle: row.listingTitle ?? row.listing_title ?? "",
+      listingLocation: row.listingLocation ?? row.listing_location ?? "",
+      registration: row.registration ?? "",
+      createdAt: row.createdAt ?? row.created_at ?? ""
     })) : [],
     whatsappTemplates: Array.isArray(rawWhatsAppTemplates) && rawWhatsAppTemplates.length
       ? rawWhatsAppTemplates.map((row) => ({ id: row.id, name: row.name, body: row.body, active: row.active !== false }))
@@ -619,7 +655,8 @@ async function fetchBackendData(token) {
       intervalHours: Number(rawSettings?.reminderSettings?.intervalHours ?? 24),
       windowDays: Number(rawSettings?.reminderSettings?.windowDays ?? 30)
     }
-  });
+  };
+  return deduplicateFinanceRecords(materializeImportedTrailerVehicles(loadedData));
 }
 
 function hasStoredValue(value) {
@@ -651,6 +688,37 @@ function financeRecordKeys(clientId, record) {
   if (isValidAgreementValue(loanAccount)) keys.push(`${clientKey}:${assetKey}:loan:${loanAccount}`);
   if (registration) keys.push(`${clientKey}:${assetKey}:reg:${registration}`);
   return keys.length ? keys : [`${clientKey}:id:${record?.id ?? Math.random()}`];
+}
+
+function canonicalVehicleRows(records, clientId = "") {
+  const source = Array.isArray(records) ? records : [];
+  const seen = new Map();
+  const result = [];
+  const expectedClient = String(clientId ?? "").trim();
+
+  source.forEach((vehicle) => {
+    if (expectedClient && String(vehicle?.clientId ?? "").trim() !== expectedClient) return;
+    const ownerKey = expectedClient || String(vehicle?.clientId ?? "").trim();
+    const type = String(vehicle?.type ?? "Truck").toLowerCase() === "trailer"
+      ? "Trailer"
+      : "Truck";
+    const registration = normalizeRegNo(baseRegNo(vehicle?.regNo));
+    const loanAccount = normalizeAgreement(vehicle?.loanAccount);
+    const identity = registration
+      ? `${ownerKey}:${type}:${registration}`
+      : loanAccount
+        ? `${ownerKey}:${type}:loan:${loanAccount}`
+        : `id:${vehicle?.id ?? result.length}`;
+    const existingIndex = seen.get(identity);
+    if (existingIndex === undefined) {
+      seen.set(identity, result.length);
+      result.push(vehicle);
+      return;
+    }
+    result[existingIndex] = mergeDuplicateRecord(result[existingIndex], vehicle);
+  });
+
+  return result;
 }
 
 function dueTaskDateKey(value) {
@@ -773,23 +841,90 @@ function formatBackendError(result, status) {
   return result?.message || result?.error || `Backend request failed with status ${status}.`;
 }
 
+function compactGeneratedId(value, prefix) {
+  const text = String(value || "");
+  if (text.length <= 16) return text;
+  const suffix = text.replace(/[^a-z0-9]/gi, "").slice(-10);
+  return `${prefix}-${suffix}`.slice(0, 16);
+}
+
+function prepareSyncData(data) {
+  const vehicleIdMap = new Map();
+  const dueIdMap = new Map();
+  const listingIdMap = new Map();
+  const remap = (map, value) => map.get(value) || value;
+  const mapId = (map, value, prefix) => {
+    const original = String(value || "");
+    if (!original) return original;
+    if (!map.has(original)) map.set(original, compactGeneratedId(original, prefix));
+    return map.get(original);
+  };
+  const vehicles = (data.vehicles ?? []).map((vehicle) => ({
+    ...vehicle,
+    id: mapId(vehicleIdMap, vehicle.id, "v")
+  }));
+  const dueTasks = (data.dueTasks ?? []).map((task) => ({
+    ...task,
+    id: mapId(dueIdMap, task.id, "d"),
+    vehicleId: remap(vehicleIdMap, task.vehicleId)
+  }));
+  const listings = (data.listings ?? []).map((listing) => ({
+    ...listing,
+    id: mapId(listingIdMap, listing.id, "m"),
+    vehicleId: remap(vehicleIdMap, listing.vehicleId)
+  }));
+  return {
+    ...data,
+    vehicles,
+    dueTasks,
+    listings,
+    clientImports: (data.clientImports ?? []).map((item) => ({
+      ...item,
+      id: compactGeneratedId(item.id, "ci")
+    })),
+    documents: (data.documents ?? []).map((item) => ({
+      ...item,
+      vehicleId: remap(vehicleIdMap, item.vehicleId),
+      taskId: remap(dueIdMap, item.taskId)
+    })),
+    verificationItems: (data.verificationItems ?? []).map((item) => ({
+      ...item,
+      taskId: remap(dueIdMap, item.taskId)
+    })),
+    saleClosings: (data.saleClosings ?? []).map((item) => ({
+      ...item,
+      listingId: remap(listingIdMap, item.listingId),
+      vehicleId: remap(vehicleIdMap, item.vehicleId)
+    })),
+    marketplaceThreads: (data.marketplaceThreads ?? []).map((item) => ({
+      ...item,
+      listingId: remap(listingIdMap, item.listingId)
+    })),
+    callerActivities: (data.callerActivities ?? []).map((item) => ({
+      ...item,
+      taskId: remap(dueIdMap, item.taskId)
+    }))
+  };
+}
+
 async function syncDataToBackend(data, token) {
+  const syncData = prepareSyncData(data);
   const response = await fetch(`${API_BASE}/api/sync`, {
     method: "POST",
     headers: authHeaders(token, { "Content-Type": "application/json" }),
     body: JSON.stringify({
-      clients: data.clients ?? [],
-      vehicles: data.vehicles ?? [],
-      dueTasks: data.dueTasks ?? [],
-      listings: data.listings ?? [],
-      callerActivities: data.callerActivities ?? [],
-      auditLogs: data.auditLogs ?? [],
-      importRows: data.importRows ?? [],
-      clientImports: data.clientImports ?? [],
-      documents: data.documents ?? [],
-      verificationItems: data.verificationItems ?? [],
-      saleClosings: data.saleClosings ?? [],
-      marketplaceThreads: data.marketplaceThreads ?? []
+      clients: syncData.clients ?? [],
+      vehicles: syncData.vehicles ?? [],
+      dueTasks: syncData.dueTasks ?? [],
+      listings: syncData.listings ?? [],
+      callerActivities: syncData.callerActivities ?? [],
+      auditLogs: syncData.auditLogs ?? [],
+      importRows: syncData.importRows ?? [],
+      clientImports: syncData.clientImports ?? [],
+      documents: syncData.documents ?? [],
+      verificationItems: syncData.verificationItems ?? [],
+      saleClosings: syncData.saleClosings ?? [],
+      marketplaceThreads: syncData.marketplaceThreads ?? []
     })
   });
   const result = await response.json().catch(() => ({}));
@@ -912,7 +1047,6 @@ function PrivacyPolicyPage() {
 }
 
 function AdminApp({ session, onLogout, onSessionUpdate }) {
-  const marketplaceChat = useMarketplaceChat(API_BASE, session.token);
   const [data, setData] = useState(loadData);
   const [section, setSection] = useState("dashboard");
   const [lastSavedAt, setLastSavedAt] = useState(null);
@@ -971,8 +1105,11 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
       } catch (pendingSyncError) {
         const message = String(pendingSyncError?.message || pendingSyncError || "").toLowerCase();
         // A failed structural sync must not hide valid database data on reload.
-        if (message.includes("foreign key") || message.includes("client_imports")) clearPendingSync();
-        return { data: await fetchBackendData(session.token), pendingSyncError };
+        const staleSnapshot = message.includes("foreign key")
+          || message.includes("cannot add or update a child row")
+          || message.includes("client_imports");
+        if (staleSnapshot) clearPendingSync();
+        return { data: await fetchBackendData(session.token), pendingSyncError: staleSnapshot ? null : pendingSyncError };
       }
     })();
     load
@@ -991,6 +1128,32 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
         setToast(err.message || "Database load failed");
       });
   }, []);
+
+  useEffect(() => {
+    if (section !== "chat-requests") return undefined;
+    let active = true;
+    let busy = false;
+    const refreshInterestChats = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        const latest = await fetchBackendData(session.token);
+        if (active && Array.isArray(latest.marketplaceInterests)) {
+          setData((current) => ({ ...current, marketplaceInterests: latest.marketplaceInterests }));
+        }
+      } catch {
+        // Keep the current chat list visible during a temporary network failure.
+      } finally {
+        busy = false;
+      }
+    };
+    void refreshInterestChats();
+    const intervalId = window.setInterval(refreshInterestChats, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [section, session.token]);
 
   // Keep an already-open Admin console in sync with customer actions (for
   // example, a vehicle being marked Sold from the mobile app).
@@ -1045,6 +1208,43 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
       .finally(() => {
         pendingMutationCountRef.current = Math.max(0, pendingMutationCountRef.current - 1);
       });
+  };
+
+  const approveMarketplaceInterest = async (interestId) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/marketplace-interests/${encodeURIComponent(interestId)}/approve`, {
+        method: "POST",
+        headers: authHeaders(session.token, { "Content-Type": "application/json" })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Vehicle details could not be shared.");
+      setData((current) => ({ ...current, marketplaceInterests: (current.marketplaceInterests ?? []).map((item) => item.id === interestId ? result : item) }));
+      setToast("Vehicle details approved and sent to the interested customer");
+      return result;
+    } catch (error) {
+      setToast(error.message || "Vehicle details could not be shared");
+      return false;
+    }
+  };
+
+  const sendAdminMarketplaceInterestMessage = async (interestId, text) => {
+    const cleanText = String(text || "").trim();
+    if (!cleanText) return false;
+    try {
+      const response = await fetch(`${API_BASE}/api/marketplace-interests/${encodeURIComponent(interestId)}/messages`, {
+        method: "POST",
+        headers: authHeaders(session.token, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ text: cleanText })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Message could not be sent.");
+      setData((current) => ({ ...current, marketplaceInterests: (current.marketplaceInterests ?? []).map((item) => item.id === interestId ? result : item) }));
+      setToast("Message sent to customer");
+      return result;
+    } catch (error) {
+      setToast(error.message || "Message could not be sent");
+      return false;
+    }
   };
 
   const withAudit = (current, entry) => ({
@@ -1376,6 +1576,87 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
     }
   };
 
+  const markAdminListingSold = (event, listingId) => {
+    event.preventDefault();
+    const listing = data.listings.find((item) => item.id === listingId);
+    const vehicle = data.vehicles.find((item) => item.id === listing?.vehicleId);
+    if (!listing || !vehicle) return false;
+    const formData = new FormData(event.currentTarget);
+    const buyerName = String(formData.get("buyerName") || "").trim();
+    const soldDate = String(formData.get("soldDate") || "").trim();
+    const soldType = String(formData.get("soldType") || "").trim();
+    if (!buyerName || !soldDate || !soldType) {
+      setToast("Buyer name, sold date and sold type are required.");
+      return false;
+    }
+    const existing = (data.saleClosings ?? []).find((item) => item.listingId === listingId);
+    const combinedVehicles = vehicle.combinationId
+      ? data.vehicles.filter((item) => item.combinationId === vehicle.combinationId)
+      : [vehicle];
+    const record = {
+      id: existing?.id ?? `sc-${Date.now()}`,
+      listingId,
+      vehicleId: vehicle.id,
+      clientId: vehicle.clientId,
+      estimatedAmount: existing?.estimatedAmount ?? combinedVehicles.reduce((sum, item) => sum + Number(item.principal || 0), 0),
+      bankConfirmedAmount: existing?.bankConfirmedAmount ?? 0,
+      foreclosureStatement: existing?.foreclosureStatement ?? null,
+      bankNoc: existing?.bankNoc ?? null,
+      ownershipTransfer: existing?.ownershipTransfer ?? null,
+      soldDate,
+      buyerName,
+      soldType,
+      status: "Sold",
+      updatedAt: new Date().toISOString()
+    };
+    const updated = {
+      ...data,
+      listings: data.listings.map((item) => item.id === listingId ? { ...item, status: "Sold" } : item),
+      vehicles: data.vehicles.map((item) => item.id === vehicle.id ? { ...item, status: "Sold", soldDate } : item),
+      dueTasks: data.dueTasks.map((task) => task.vehicleId === vehicle.id ? { ...task, status: "Closed" } : task),
+      saleClosings: [record, ...(data.saleClosings ?? []).filter((item) => item.id !== record.id)]
+    };
+    persist(withAudit(updated, {
+      module: "Sale Closing",
+      action: "Sale Completed",
+      record: listing.title,
+      oldValue: existing?.status ?? "Active",
+      newValue: "Sold",
+      remark: `Buyer ${buyerName} | Sold type ${soldType}`
+    }), "Sale completed and listing removed from customer marketplace");
+    return true;
+  };
+
+  const deleteMarketplaceListing = async (listingId) => {
+    const listing = data.listings.find((item) => item.id === listingId);
+    if (!listing || !window.confirm(`Delete ${listing.title || "this listing"}?`)) return;
+    try {
+      const response = await enqueueMutation(() => fetch(`${API_BASE}/api/listings/${encodeURIComponent(listingId)}`, {
+        method: "DELETE",
+        headers: authHeaders(session.token)
+      }));
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Listing could not be deleted.");
+      const updated = {
+        ...data,
+        listings: data.listings.filter((item) => item.id !== listingId),
+        saleClosings: (data.saleClosings ?? []).filter((item) => item.listingId !== listingId),
+        marketplaceThreads: (data.marketplaceThreads ?? []).filter((item) => item.listingId !== listingId)
+      };
+      persist(withAudit(updated, {
+        module: "Marketplace",
+        action: "Listing Deleted",
+        record: listing.title,
+        oldValue: listing.status,
+        newValue: "Removed",
+        remark: "Admin deleted marketplace listing"
+      }), "Listing deleted");
+    } catch (error) {
+      setSaveStatus("Error");
+      setToast(error.message || "Listing could not be deleted.");
+    }
+  };
+
   const updateVehicleFinance = (event, vehicleId) => {
     event.preventDefault();
     const vehicle = data.vehicles.find((item) => item.id === vehicleId);
@@ -1402,13 +1683,9 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
     const nextVehicle = {
       ...vehicle,
       principal: numberFrom("principal", vehicle.principal),
-      overdue: numberFrom("overdue", vehicle.overdue),
-      penalty: numberFrom("penalty", vehicle.penalty),
-      foreclosure: numberFrom("foreclosure", vehicle.foreclosure),
       ...loanFields,
       emiSchedule: loanPlan.schedule.length ? loanPlan.schedule : (vehicle.emiSchedule ?? []),
-      emiHistory: loanPlan.history.length ? loanPlan.history : (vehicle.emiHistory ?? []),
-      status: form.get("status")?.toString() || vehicle.status
+      emiHistory: loanPlan.history.length ? loanPlan.history : (vehicle.emiHistory ?? [])
     };
     const updated = {
       ...data,
@@ -1450,8 +1727,7 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
       nationalPermitExpiry: textFrom("nationalPermitExpiry", vehicle.nationalPermitExpiry || ""),
       pucNo: textFrom("pucNo", vehicle.pucNo || ""),
       pucExpiry: textFrom("pucExpiry", vehicle.pucExpiry || ""),
-      fitnessExpiry: textFrom("fitnessExpiry", vehicle.fitnessExpiry || ""),
-      complianceStatus: textFrom("complianceStatus", "Active")
+      fitnessExpiry: textFrom("fitnessExpiry", vehicle.fitnessExpiry || "")
     };
     const insuranceRecord = buildInsuranceHistoryEntry(nextFields);
     const complianceRecords = buildComplianceHistoryEntries(nextFields);
@@ -1486,49 +1762,15 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
     }), `${vehicle.regNo} compliance saved`);
   };
 
-  const updateVehicleCombination = (event, vehicleId) => {
-    event.preventDefault();
-    const vehicle = data.vehicles.find((item) => item.id === vehicleId);
-    if (!vehicle) return;
-    const partnerId = new FormData(event.currentTarget).get("partnerVehicleId")?.toString() || "";
-    const partner = data.vehicles.find((item) => item.id === partnerId);
-    if (partner && (partner.clientId !== vehicle.clientId || partner.type === vehicle.type)) {
-      setToast("A combination must link one Truck and one Trailer from the same client.");
-      return;
-    }
-    const oldCombinationIds = new Set([vehicle.combinationId, partner?.combinationId].filter(Boolean));
-    const oldGroup = data.vehicles
-      .filter((item) => item.combinationId && oldCombinationIds.has(item.combinationId))
-      .map((item) => item.id);
-    const combinationId = partner ? (vehicle.combinationId || partner.combinationId || `combo-${Date.now()}`) : "";
-    const linkedIds = new Set([vehicle.id, ...(partner ? [partner.id] : []), ...oldGroup]);
-    const updated = {
-      ...data,
-      vehicles: data.vehicles.map((item) => {
-        if (partner && (item.id === vehicle.id || item.id === partner.id)) return { ...item, combinationId };
-        if (!partner && linkedIds.has(item.id)) return { ...item, combinationId: "" };
-        return item;
-      })
-    };
-    const detail = partner ? `${vehicle.regNo} + ${partner.regNo}` : `${vehicle.regNo} unlinked`;
-    const next = notify(updated, partner ? "Truck and Trailer linked" : "Combination unlinked", detail, "fleet");
-    persist(withAudit(next, {
-      module: "Fleet",
-      action: partner ? "Combination Linked" : "Combination Unlinked",
-      record: vehicle.regNo,
-      oldValue: vehicle.combinationId || "No combination",
-      newValue: combinationId || "No combination",
-      remark: detail
-    }), partner ? `Combination linked: ${detail}` : `${vehicle.regNo} unlinked`);
-  };
-
   const createListing = async (event, vehicleId) => {
     event.preventDefault();
     const vehicle = data.vehicles.find((item) => item.id === vehicleId);
     if (!vehicle) return;
     const form = new FormData(event.currentTarget);
     const photos = await readListingPhotos(form.getAll("photos"));
-    const price = Number(form.get("price")?.toString().replace(/\D/g, "")) || liability(vehicle);
+    // Admin only publishes the vehicle. Marketplace price is derived from the
+    // vehicle's current closing principal and is not manually entered here.
+    const price = liability(vehicle);
     const listing = {
       id: `m-${Date.now()}`,
       vehicleId,
@@ -1637,8 +1879,8 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
         importedAt: new Date().toLocaleString("en-IN"),
         rows: storedRows
       };
-      const importableRows = rows.filter((row) => row.validationStatus === "Valid" && row.regNo && !isBodyRow(row));
-      const importStamp = Date.now();
+      const importableRows = rows.filter((row) => row.validationStatus === "Valid" && row.regNo);
+      const importStamp = Date.now().toString(36);
       const newVehicles = importableRows.map((row, index) => excelRowToVehicle(row, clientId, `v-excel-${importStamp}-${index}`));
       const newDueTasks = importableRows
         .map((row, index) => ({ row, index }))
@@ -1843,7 +2085,7 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
         }
       : null;
     const client = getDataClient(data, clientId);
-    const importStamp = Date.now();
+    const importStamp = Date.now().toString(36);
     const vehicle = excelRowToVehicle(manualRow, clientId, `v-manual-${importStamp}`);
     if (row.closingPrincipal) vehicle.principal = toNumber(row.closingPrincipal);
     const dueTask = toNumber(manualRow.emiAmount) > 0
@@ -2274,7 +2516,7 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
         </div>
       </aside>
 
-      <section className="workspace">
+      <section className={`workspace ${section === "fleet" ? "fleet-workspace" : ""} ${section === "chat-requests" ? "chat-requests-workspace" : ""}`}>
         <header className={`topbar ${section === "settings" ? "settings-topbar" : ""}`}>
           <div>
             <p>Admin access</p>
@@ -2291,10 +2533,10 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
         {section === "client-profile" && <ClientProfile data={data} clientId={selectedClientId} validationRows={activeValidation?.clientId === selectedClientId ? activeValidation.rows : []} backToClients={() => openSection("clients")} importClientExcel={importClientExcel} importClientPdf={importClientPdf} addManualClientVehicle={addManualClientVehicle} deleteClientVehicle={deleteClientVehicle} deleteClientAndAccount={deleteClientAndAccount} />}
         {toast && <button className="toast" onClick={() => setToast("")}>{toast}</button>}
 
-        {section === "fleet" && <Fleet data={data} updateVehicleFinance={updateVehicleFinance} updateVehicleCompliance={updateVehicleCompliance} updateVehicleCombination={updateVehicleCombination} createListing={createListing} />}
+        {section === "fleet" && <Fleet data={data} updateVehicleFinance={updateVehicleFinance} updateVehicleCompliance={updateVehicleCompliance} createListing={createListing} />}
         {section === "dues" && <Dues data={data} openClientProfile={openClientProfile} />}
-        {section === "marketplace" && <Marketplace data={data} updateListingStatus={updateListingStatus} saveSaleClosing={saveSaleClosing} openFleet={() => openSection("fleet")} />}
-        {section === "chat-requests" && <MarketplaceChat chat={marketplaceChat} admin />}
+        {section === "marketplace" && <Marketplace data={data} interests={data.marketplaceInterests ?? []} approveInterest={approveMarketplaceInterest} updateListingStatus={updateListingStatus} saveSaleClosing={saveSaleClosing} markAdminListingSold={markAdminListingSold} deleteMarketplaceListing={deleteMarketplaceListing} openFleet={() => openSection("fleet")} />}
+        {section === "chat-requests" && <AdminInterestChatsPage interests={data.marketplaceInterests ?? []} onApprove={approveMarketplaceInterest} onSend={sendAdminMarketplaceInterestMessage} apiBase={API_BASE} token={session.token} />}
         {section === "import" && <ImportRows data={data} importValidRows={importValidRows} lastSavedAt={lastSavedAt} />}
         {section === "settings" && <Settings data={data} session={session} saveAdminProfile={saveAdminProfile} changeAdminPassword={changeAdminPassword} saveCommonPassword={saveCommonPassword} saveRolePermissions={saveRolePermissions} />}
       </section>
@@ -2529,7 +2771,7 @@ function ClientProfile({ data, clientId, validationRows = [], backToClients, imp
     );
   }
 
-  const clientVehicles = data.vehicles.filter((vehicle) => vehicle.clientId === client.id);
+  const clientVehicles = canonicalVehicleRows(data.vehicles, client.id);
   // Manual entries are real vehicles even when their registration text contains "body".
   const visibleVehicles = clientVehicles;
   const clientDues = data.dueTasks.filter((task) => task.clientId === client.id);
@@ -2792,96 +3034,182 @@ function makeVehicleDetail(vehicle, excelAsset, clientName) {
   };
 }
 
-function Fleet({ data, updateVehicleFinance, updateVehicleCompliance, updateVehicleCombination, createListing }) {
+function VehicleFinanceEditor({ vehicle, updateVehicleFinance }) {
   return (
-    <section className="grid-list">
-      {data.vehicles.map((vehicle) => (
-        <article className="asset" key={vehicle.id}>
-          <div className="card-head">
+    <details>
+      <summary>Edit finance</summary>
+      <form className="form-grid compact-form" onSubmit={(event) => updateVehicleFinance(event, vehicle.id)}>
+        <label>Loan ID<input name="loanId" defaultValue={vehicle.loanId || `LOAN-${String(vehicle.regNo || vehicle.id).replace(/[^A-Z0-9]/gi, "").toUpperCase()}`} /></label>
+        <label>Loan Account<input name="loanAccount" defaultValue={vehicle.loanAccount || ""} /></label>
+        <label>Financier<input name="financier" defaultValue={vehicle.financier || ""} /></label>
+        <label>EMI Amount<input name="emiAmount" type="number" min="0" step="0.01" defaultValue={vehicle.emiAmount || ""} /></label>
+        <label>Interest %<input name="interestRate" type="number" min="0" step="0.01" defaultValue={vehicle.interestRate || ""} /></label>
+        <label>Tenure (months)<input name="tenure" type="number" min="0" step="1" defaultValue={vehicle.tenure || ""} /></label>
+        <label>Paid EMI<input name="paidEmi" type="number" min="0" step="1" defaultValue={vehicle.paidEmi || ""} /></label>
+        <label>EMI Start<input name="emiStart" type="date" defaultValue={vehicle.emiStart || ""} /></label>
+        <label>EMI End<input name="emiEnd" type="date" defaultValue={vehicle.emiEnd || ""} /></label>
+        <label>Loan Amount<input name="loanAmount" type="number" min="0" step="0.01" defaultValue={vehicle.loanAmount || ""} /></label>
+        <button type="submit"><Icon name="check" />Save finance</button>
+      </form>
+    </details>
+  );
+}
+
+function FleetVehicleDetail({ data, vehicle, trailers, updateVehicleFinance, updateVehicleCompliance, createListing }) {
+  return (
+    <article className="asset fleet-detail-card">
+      <div className="card-head">
+        <div>
+          <strong>{vehicle.regNo}</strong>
+          <span>{vehicle.year} {vehicle.make} {vehicle.model}</span>
+        </div>
+        <Badge label={vehicle.status} />
+      </div>
+      <dl>
+        <div><dt>Owner</dt><dd>{getDataClient(data, vehicle.clientId)?.name}</dd></div>
+        <div><dt>Type</dt><dd>{vehicle.type}</dd></div>
+        <div><dt>Closing Principal</dt><dd>{formatMoney(vehicle.principal)}</dd></div>
+        <div><dt>Insurance</dt><dd>{vehicle.insurancePolicyNo || formatDisplayDate(vehicle.insuranceExpiry)}</dd></div>
+        <div><dt>Permit</dt><dd>{vehicle.permitNo || formatDisplayDate(vehicle.permitExpiry)}</dd></div>
+        {vehicle.status === "Sold" && <div><dt>Sold date</dt><dd>{formatDisplayDate(vehicle.soldDate)}</dd></div>}
+      </dl>
+      <VehicleFinanceEditor vehicle={vehicle} updateVehicleFinance={updateVehicleFinance} />
+      <details>
+        <summary>Edit insurance & compliance</summary>
+        <form className="form-grid compact-form" onSubmit={(event) => updateVehicleCompliance(event, vehicle.id)}>
+          <label>Insurance Company<input name="insuranceCompany" defaultValue={vehicle.insuranceCompany || ""} /></label>
+          <label>Policy No.<input name="insurancePolicyNo" defaultValue={vehicle.insurancePolicyNo || ""} /></label>
+          <label>Policy Start<input name="insuranceStart" type="date" defaultValue={vehicle.insuranceStart || ""} /></label>
+          <label>Policy Expiry<input name="insuranceExpiry" type="date" defaultValue={vehicle.insuranceExpiry || ""} /></label>
+          <label>Policy Status<select name="insuranceStatus" defaultValue="Active"><option>Active</option><option>Expired</option></select></label>
+          <label>Permit No.<input name="permitNo" defaultValue={vehicle.permitNo || ""} /></label>
+          <label>Permit Issue<input name="permitIssue" type="date" defaultValue={vehicle.permitIssue || ""} /></label>
+          <label>Permit Expiry<input name="permitExpiry" type="date" defaultValue={vehicle.permitExpiry || ""} /></label>
+          <label>Permit Type<input name="permitType" defaultValue={vehicle.permitType || ""} /></label>
+          <label>National Permit Expiry<input name="nationalPermitExpiry" type="date" defaultValue={vehicle.nationalPermitExpiry || ""} /></label>
+          <label>PUC No.<input name="pucNo" defaultValue={vehicle.pucNo || ""} /></label>
+          <label>PUC Expiry<input name="pucExpiry" type="date" defaultValue={vehicle.pucExpiry || ""} /></label>
+          <label>Fitness Expiry<input name="fitnessExpiry" type="date" defaultValue={vehicle.fitnessExpiry || ""} /></label>
+          <button type="submit"><Icon name="check" />Save policy & compliance</button>
+        </form>
+      </details>
+      <details>
+        <summary>Create sale listing</summary>
+        <form className="form-grid compact-form" onSubmit={(event) => createListing(event, vehicle.id)}>
+          <label>Location<input name="location" placeholder={getDataClient(data, vehicle.clientId)?.city ?? "City"} /></label>
+          <label>Condition<select name="condition" defaultValue="Good"><option>Excellent</option><option>Good</option><option>Average</option></select></label>
+          <label className="span-2">Photos<input name="photos" type="file" accept="image/*" multiple /></label>
+          <button type="submit"><Icon name="store" />Create listing</button>
+        </form>
+      </details>
+      {trailers.map((trailer) => (
+        <section className="fleet-trailer" key={trailer.id}>
+          <div className="fleet-trailer-head">
+            <div>
+              <strong>↳ {trailer.regNo}</strong>
+              <span>{trailer.year} {trailer.make} {trailer.model}</span>
+            </div>
+            <Badge label={trailer.status} />
+          </div>
+          <dl>
+            <div><dt>Type</dt><dd>Trailer</dd></div>
+            <div><dt>Loan Amount</dt><dd>{formatMoney(trailer.loanAmount)}</dd></div>
+          </dl>
+          <VehicleFinanceEditor vehicle={trailer} updateVehicleFinance={updateVehicleFinance} />
+        </section>
+      ))}
+    </article>
+  );
+}
+
+function Fleet({ data, updateVehicleFinance, updateVehicleCompliance, createListing }) {
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [selectedVehicleId, setSelectedVehicleId] = useState(null);
+  const canonicalVehicles = canonicalVehicleRows(data.vehicles);
+  const trucks = canonicalVehicles.filter((vehicle) => vehicle.type !== "Trailer");
+  const trailerGroups = new Map(trucks.map((truck) => [truck.id, []]));
+  const trailers = canonicalVehicles.filter((vehicle) => vehicle.type === "Trailer");
+  trailers.forEach((trailer) => {
+    const trailerReg = normalizeRegNo(baseRegNo(trailer.regNo));
+    const matchingTruck = trucks.find((truck) => (
+      truck.clientId === trailer.clientId
+      && normalizeRegNo(baseRegNo(truck.regNo)) === trailerReg
+    ));
+    if (matchingTruck) trailerGroups.get(matchingTruck.id)?.push(trailer);
+  });
+  const matchesSearch = (vehicle) => {
+    const owner = getDataClient(data, vehicle.clientId)?.name || "";
+    return [vehicle.regNo, vehicle.type, vehicle.make, vehicle.model, owner]
+      .join(" ")
+      .toLowerCase()
+      .includes(search.trim().toLowerCase());
+  };
+  const filteredTrucks = trucks.filter((truck) => (
+    matchesSearch(truck) || (trailerGroups.get(truck.id) ?? []).some(matchesSearch)
+  ));
+  const pageSize = 12;
+  const pageCount = Math.max(1, Math.ceil(filteredTrucks.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const visibleTrucks = filteredTrucks.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const selectedVehicle = trucks.find((vehicle) => vehicle.id === selectedVehicleId);
+  const visibleColumnCount = Math.min(4, Math.max(1, visibleTrucks.length));
+  return (
+    <>
+      <section className="fleet-toolbar">
+        <label>
+          <span>Search fleet</span>
+          <input
+            value={search}
+            onChange={(event) => { setSearch(event.target.value); setPage(1); }}
+            placeholder="Registration, owner or type"
+          />
+        </label>
+        <div className="fleet-result-count">{filteredTrucks.length} truck{filteredTrucks.length === 1 ? "" : "s"}</div>
+      </section>
+      <section className={`grid-list fleet-grid fleet-grid-columns-${visibleColumnCount}`}>
+      {visibleTrucks.map((vehicle) => (
+        <button className="fleet-summary-card" type="button" key={vehicle.id} onClick={() => setSelectedVehicleId(vehicle.id)}>
+          <div className="fleet-summary-head">
             <div>
               <strong>{vehicle.regNo}</strong>
               <span>{vehicle.year} {vehicle.make} {vehicle.model}</span>
             </div>
             <Badge label={vehicle.status} />
           </div>
-          <dl>
-            <div><dt>Owner</dt><dd>{getDataClient(data, vehicle.clientId)?.name}</dd></div>
-            <div><dt>Type</dt><dd>{vehicle.type}</dd></div>
-            <div><dt>KM</dt><dd>{vehicle.km.toLocaleString("en-IN")}</dd></div>
-            <div><dt>Closing Principal</dt><dd>{formatMoney(vehicle.principal)}</dd></div>
-            <div><dt>Insurance</dt><dd>{vehicle.insurancePolicyNo || formatDisplayDate(vehicle.insuranceExpiry)}</dd></div>
-            <div><dt>Permit</dt><dd>{vehicle.permitNo || formatDisplayDate(vehicle.permitExpiry)}</dd></div>
-            <div><dt>Combination</dt><dd>{vehicle.combinationId || "Unlinked"}</dd></div>
-            {vehicle.status === "Sold" && <div><dt>Sold date</dt><dd>{formatDisplayDate(vehicle.soldDate)}</dd></div>}
-          </dl>
-          <details>
-            <summary>Edit finance</summary>
-            <form className="form-grid compact-form" onSubmit={(event) => updateVehicleFinance(event, vehicle.id)}>
-              <label>Loan ID<input name="loanId" defaultValue={vehicle.loanId || `LOAN-${String(vehicle.regNo || vehicle.id).replace(/[^A-Z0-9]/gi, "").toUpperCase()}`} /></label>
-              <label>Loan Account<input name="loanAccount" defaultValue={vehicle.loanAccount || ""} /></label>
-              <label>Financier<input name="financier" defaultValue={vehicle.financier || ""} /></label>
-              <label>Loan Amount<input name="loanAmount" type="number" min="0" step="0.01" defaultValue={vehicle.loanAmount || ""} /></label>
-              <label>EMI Amount<input name="emiAmount" type="number" min="0" step="0.01" defaultValue={vehicle.emiAmount || ""} /></label>
-              <label>Interest %<input name="interestRate" type="number" min="0" step="0.01" defaultValue={vehicle.interestRate || ""} /></label>
-              <label>Tenure (months)<input name="tenure" type="number" min="0" step="1" defaultValue={vehicle.tenure || ""} /></label>
-              <label>Paid EMI<input name="paidEmi" type="number" min="0" step="1" defaultValue={vehicle.paidEmi || ""} /></label>
-              <label>EMI Start<input name="emiStart" type="date" defaultValue={vehicle.emiStart || ""} /></label>
-              <label>EMI End<input name="emiEnd" type="date" defaultValue={vehicle.emiEnd || ""} /></label>
-              <label>Principal<input name="principal" defaultValue={vehicle.principal} /></label>
-              <label>Overdue<input name="overdue" defaultValue={vehicle.overdue} /></label>
-              <label>Penalty<input name="penalty" defaultValue={vehicle.penalty} /></label>
-              <label>Foreclosure<input name="foreclosure" defaultValue={vehicle.foreclosure} /></label>
-              <label>Status<select name="status" defaultValue={vehicle.status}><option>Active</option><option>Listed</option><option>Sold</option></select></label>
-              <button type="submit"><Icon name="check" />Save finance</button>
-            </form>
-          </details>
-          <details>
-            <summary>Link Truck + Trailer</summary>
-            <form className="form-grid compact-form" onSubmit={(event) => updateVehicleCombination(event, vehicle.id)}>
-              <label className="span-2">Partner asset
-                <select name="partnerVehicleId" defaultValue={data.vehicles.find((item) => item.combinationId && item.combinationId === vehicle.combinationId && item.id !== vehicle.id)?.id || ""}>
-                  <option value="">No linked partner</option>
-                  {data.vehicles.filter((item) => item.clientId === vehicle.clientId && item.type !== vehicle.type).map((item) => (
-                    <option key={item.id} value={item.id}>{item.regNo} - {item.type}{item.combinationId ? ` (${item.combinationId})` : ""}</option>
-                  ))}
-                </select>
-              </label>
-              <button type="submit"><Icon name="check" />Save combination</button>
-            </form>
-          </details>
-          <details>
-            <summary>Edit insurance & compliance</summary>
-            <form className="form-grid compact-form" onSubmit={(event) => updateVehicleCompliance(event, vehicle.id)}>
-              <label>Insurance Company<input name="insuranceCompany" defaultValue={vehicle.insuranceCompany || ""} /></label>
-              <label>Policy No.<input name="insurancePolicyNo" defaultValue={vehicle.insurancePolicyNo || ""} /></label>
-              <label>Policy Start<input name="insuranceStart" type="date" defaultValue={vehicle.insuranceStart || ""} /></label>
-              <label>Policy Expiry<input name="insuranceExpiry" type="date" defaultValue={vehicle.insuranceExpiry || ""} /></label>
-              <label>Policy Status<select name="insuranceStatus" defaultValue="Active"><option>Active</option><option>Expired</option><option>Pending Verification</option></select></label>
-              <label>Permit No.<input name="permitNo" defaultValue={vehicle.permitNo || ""} /></label>
-              <label>Permit Issue<input name="permitIssue" type="date" defaultValue={vehicle.permitIssue || ""} /></label>
-              <label>Permit Expiry<input name="permitExpiry" type="date" defaultValue={vehicle.permitExpiry || ""} /></label>
-              <label>Permit Type<input name="permitType" defaultValue={vehicle.permitType || ""} /></label>
-              <label>National Permit Expiry<input name="nationalPermitExpiry" type="date" defaultValue={vehicle.nationalPermitExpiry || ""} /></label>
-              <label>PUC No.<input name="pucNo" defaultValue={vehicle.pucNo || ""} /></label>
-              <label>PUC Expiry<input name="pucExpiry" type="date" defaultValue={vehicle.pucExpiry || ""} /></label>
-              <label>Fitness Expiry<input name="fitnessExpiry" type="date" defaultValue={vehicle.fitnessExpiry || ""} /></label>
-              <label>Compliance Status<select name="complianceStatus" defaultValue="Active"><option>Active</option><option>Expired</option><option>Pending Verification</option></select></label>
-              <button type="submit"><Icon name="check" />Save policy & compliance</button>
-            </form>
-          </details>
-          <details>
-            <summary>Create sale listing</summary>
-            <form className="form-grid compact-form" onSubmit={(event) => createListing(event, vehicle.id)}>
-              <label>Price<input name="price" placeholder={formatMoney(liability(vehicle))} /></label>
-              <label>Location<input name="location" placeholder={getDataClient(data, vehicle.clientId)?.city ?? "City"} /></label>
-              <label>Condition<select name="condition" defaultValue="Good"><option>Excellent</option><option>Good</option><option>Average</option></select></label>
-              <label className="span-2">Photos<input name="photos" type="file" accept="image/*" multiple /></label>
-              <button type="submit"><Icon name="store" />Create listing</button>
-            </form>
-          </details>
-        </article>
+          <div className="fleet-summary-grid">
+            <div><span>Owner</span><strong>{getDataClient(data, vehicle.clientId)?.name || "—"}</strong></div>
+            <div><span>Type</span><strong>{vehicle.type}</strong></div>
+            <div><span>Closing Principal</span><strong>{formatMoney(vehicle.principal)}</strong></div>
+            <div><span>Trailer</span><strong>{trailerGroups.get(vehicle.id)?.length || 0}</strong></div>
+          </div>
+          <div className="fleet-summary-open">Open details <span>→</span></div>
+        </button>
       ))}
-    </section>
+      {visibleTrucks.length === 0 && <div className="fleet-empty">No matching vehicles found.</div>}
+      </section>
+      {filteredTrucks.length > 0 && <nav className="fleet-pagination" aria-label="Fleet pagination">
+        <button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage === 1}>Previous</button>
+        <span>Page {currentPage} of {pageCount}</span>
+        <button type="button" onClick={() => setPage((value) => Math.min(pageCount, value + 1))} disabled={currentPage === pageCount}>Next</button>
+      </nav>}
+      {selectedVehicle && <div className="fleet-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedVehicleId(null); }}>
+        <div className="fleet-modal" role="dialog" aria-modal="true" aria-label={`${selectedVehicle.regNo} details`}>
+          <div className="fleet-modal-head">
+            <div><span>Fleet details</span><strong>{selectedVehicle.regNo}</strong></div>
+            <button type="button" onClick={() => setSelectedVehicleId(null)}>Close</button>
+          </div>
+          <FleetVehicleDetail
+            data={data}
+            vehicle={selectedVehicle}
+            trailers={trailerGroups.get(selectedVehicle.id) ?? []}
+            updateVehicleFinance={updateVehicleFinance}
+            updateVehicleCompliance={updateVehicleCompliance}
+            createListing={createListing}
+          />
+        </div>
+      </div>}
+    </>
   );
 }
 
@@ -2941,7 +3269,7 @@ function Dues({ data, openClientProfile }) {
             ["Fitness", "Fitness"],
             ["Permit", "Permit"],
             ["National Permit", "National Permit"],
-            ["Policy", "Policy"]
+            ["Insurance", "Insurance"]
           ].map(([label, value]) => {
             const count = value === "All"
               ? allExpiryAlerts.length
@@ -3480,24 +3808,18 @@ function CallerQueue({ data, saveCallerOutcome, openWhatsApp, updateWhatsAppStat
   );
 }
 
-function Marketplace({ data, updateListingStatus, saveSaleClosing, openFleet }) {
-  const [filters, setFilters] = useState({ assetType: "All", condition: "All", finance: "All", insurance: "All", location: "", maxPrice: "" });
-  const [showFilters, setShowFilters] = useState(false);
+function Marketplace({ data, interests = [], approveInterest, updateListingStatus, saveSaleClosing, markAdminListingSold, deleteMarketplaceListing, openFleet }) {
   const [selectedListing, setSelectedListing] = useState(null);
-  const filteredListings = data.listings.filter((listing) => {
-    const vehicle = getDataVehicle(data, listing.vehicleId);
-    const vehicleLiability = vehicle ? liability(vehicle) : 0;
-    const locationMatch = !filters.location.trim() || listing.location.toLowerCase().includes(filters.location.trim().toLowerCase());
-    const priceMatch = !filters.maxPrice || listing.price <= Number(filters.maxPrice);
-    const assetMatch = filters.assetType === "All" || vehicle?.type === filters.assetType;
-    const conditionMatch = filters.condition === "All" || listing.condition === filters.condition;
-    const financeMatch = filters.finance === "All" || (filters.finance === "Financed" ? vehicleLiability > 0 : vehicleLiability <= 0);
-    const insuranceMatch = filters.insurance === "All" || (filters.insurance === "Insured" ? Boolean(vehicle?.insuranceExpiry) : !vehicle?.insuranceExpiry);
-    return locationMatch && priceMatch && assetMatch && conditionMatch && financeMatch && insuranceMatch;
-  });
-
-  const resetFilters = () => setFilters({ assetType: "All", condition: "All", finance: "All", insurance: "All", location: "", maxPrice: "" });
-  const activeFilterCount = Object.entries(filters).filter(([key, value]) => key === "location" || key === "maxPrice" ? Boolean(value) : value !== "All").length;
+  const [soldListingId, setSoldListingId] = useState(null);
+  const [openInterestListingId, setOpenInterestListingId] = useState(null);
+  const [openInterestId, setOpenInterestId] = useState(null);
+  const filteredListings = data.listings;
+  const openInterestListing = data.listings.find((listing) => listing.id === openInterestListingId);
+  const openListingInterests = openInterestListing ? interests.filter((item) => item.listingId === openInterestListing.id) : [];
+  const closeInterestModal = () => {
+    setOpenInterestListingId(null);
+    setOpenInterestId(null);
+  };
 
   return (
     <section className="stack admin-marketplace-page">
@@ -3507,23 +3829,8 @@ function Marketplace({ data, updateListingStatus, saveSaleClosing, openFleet }) 
           <h2>Vehicle marketplace</h2>
           <p>Approve listings and maintain the bank-confirmed closing record for every vehicle sale.</p>
         </div>
-        <div className="section-intro-actions">
-          <button className="filter-trigger" type="button" onClick={() => setShowFilters(true)}><Icon name="filter" />Filters{activeFilterCount ? ` (${activeFilterCount})` : ""}</button>
-          <button type="button" onClick={openFleet}><Icon name="truck" />Open Fleet</button>
-        </div>
       </div>
       <>
-      {showFilters && <button className="filter-drawer-backdrop" type="button" aria-label="Close filters" onClick={() => setShowFilters(false)} />}
-      <aside className={`filter-drawer ${showFilters ? "open" : ""}`} aria-label="Marketplace filters">
-        <div className="filter-drawer-head"><div><p className="eyebrow">Refine results</p><h3>Marketplace filters</h3></div><button className="icon-button" type="button" aria-label="Close filters" onClick={() => setShowFilters(false)}><Icon name="close" /></button></div>
-        <label>Asset type<select value={filters.assetType} onChange={(event) => setFilters((current) => ({ ...current, assetType: event.target.value }))}><option>All</option><option>Truck</option><option>Trailer</option></select></label>
-        <label>Condition<select value={filters.condition} onChange={(event) => setFilters((current) => ({ ...current, condition: event.target.value }))}><option>All</option><option>Excellent</option><option>Good</option><option>Average</option></select></label>
-        <label>Finance<select value={filters.finance} onChange={(event) => setFilters((current) => ({ ...current, finance: event.target.value }))}><option>All</option><option>Financed</option><option>Loan-free</option></select></label>
-        <label>Insurance<select value={filters.insurance} onChange={(event) => setFilters((current) => ({ ...current, insurance: event.target.value }))}><option>All</option><option>Insured</option><option>Missing</option></select></label>
-        <label>Location<input value={filters.location} onChange={(event) => setFilters((current) => ({ ...current, location: event.target.value }))} placeholder="Search location" /></label>
-        <label>Max price<input type="number" min="0" value={filters.maxPrice} onChange={(event) => setFilters((current) => ({ ...current, maxPrice: event.target.value }))} placeholder="Any price" /></label>
-        <div className="filter-drawer-actions"><button className="filter-reset" type="button" onClick={resetFilters}><Icon name="refresh" />Reset</button><button type="button" onClick={() => setShowFilters(false)}>Apply filters</button></div>
-      </aside>
       {data.listings.length === 0 ? <section className="empty-state-panel">
         <Icon name="store" />
         <h3>No marketplace listings yet</h3>
@@ -3532,10 +3839,11 @@ function Marketplace({ data, updateListingStatus, saveSaleClosing, openFleet }) 
       </section> : filteredListings.length > 0 ? <section className="grid-list admin-marketplace-listings">
       {filteredListings.map((listing) => {
         const listingPhoto = listing.photos?.[0];
-        const closing = (data.saleClosings ?? []).find((item) => item.listingId === listing.id);
+        const vehicle = getDataVehicle(data, listing.vehicleId);
+        const listingInterests = interests.filter((item) => item.listingId === listing.id);
         return (
           <article className="asset admin-marketplace-card" key={listing.id}>
-            {listingPhoto?.dataUrl && <img className="listing-photo" src={listingPhoto.dataUrl} alt={listing.title} />}
+            {listingPhotoSrc(listingPhoto) && <img className="listing-photo" src={listingPhotoSrc(listingPhoto)} alt={listing.title} />}
             <div className="card-head">
               <div>
                 <strong>{listing.title}</strong>
@@ -3543,63 +3851,297 @@ function Marketplace({ data, updateListingStatus, saveSaleClosing, openFleet }) 
               </div>
               <Badge label={listing.status} />
             </div>
-            <Pair label="Price" value={formatMoney(listing.price)} />
-            <Pair label="Vehicle" value={getDataVehicle(data, listing.vehicleId)?.regNo ?? listing.vehicleId} />
-            <Pair label="Photos" value={String(listing.photos?.length ?? 0)} />
-            <Pair label="Estimated closing" value={closing ? formatMoney(closing.estimatedAmount) : formatMoney(getDataVehicle(data, listing.vehicleId) ? liability(getDataVehicle(data, listing.vehicleId)) : 0)} />
-            <Pair label="Bank-confirmed closing" value={closing?.bankConfirmedAmount ? formatMoney(closing.bankConfirmedAmount) : "Pending bank confirmation"} />
-            <Pair label="Chat threads" value={String((data.marketplaceThreads ?? []).filter((thread) => thread.listingId === listing.id).length)} />
-            <div className="actions">
-              <button type="button" onClick={() => setSelectedListing(listing)}><Icon name="eye" />View details</button>
-              <button onClick={() => updateListingStatus(listing.id, "Active")}>Approve</button>
-              <button onClick={() => updateListingStatus(listing.id, "Changes Required")}>Changes</button>
-              <button className="danger" onClick={() => updateListingStatus(listing.id, "Rejected")}>Reject</button>
+            <div className="admin-marketplace-quick-info">
+              <span>Vehicle <strong>{vehicle?.regNo ?? listing.vehicleId}</strong></span>
+              <span>Interested <strong>{listingInterests.length}</strong></span>
             </div>
-            <details className="sale-closing-panel">
-              <summary>Bank closing &amp; sale records</summary>
-              <form className="form-grid compact-form" onSubmit={(event) => saveSaleClosing(event, listing.id)}>
-                <label>Bank-confirmed amount<input name="bankConfirmedAmount" type="number" min="0" step="0.01" defaultValue={closing?.bankConfirmedAmount || ""} placeholder="384884" /></label>
-                <label>Sold date<input name="soldDate" type="date" defaultValue={closing?.soldDate || ""} /></label>
-                <label>Foreclosure statement<input name="foreclosureStatement" type="file" accept="application/pdf,image/*" /></label>
-                <label>Bank NOC<input name="bankNoc" type="file" accept="application/pdf,image/*" /></label>
-                <label className="span-2">Ownership transfer proof<input name="ownershipTransfer" type="file" accept="application/pdf,image/*" /></label>
-                <button className="span-2" type="submit"><Icon name="check" />Save closing records</button>
-              </form>
-              {closing && <div className="closing-file-list">
-                {[["Foreclosure", closing.foreclosureStatement], ["Bank NOC", closing.bankNoc], ["Transfer proof", closing.ownershipTransfer]].map(([label, file]) => file?.dataUrl && <a key={label} href={file.dataUrl} target="_blank" rel="noreferrer"><Icon name="upload" />Open {label}</a>)}
-              </div>}
-            </details>
+            <div className="actions admin-marketplace-actions">
+              {listing.status !== "Sold" && vehicle?.status !== "Sold" && <>
+                <button type="button" className="sold-action" onClick={() => setSoldListingId((current) => current === listing.id ? null : listing.id)}><Icon name="check" />Sold this</button>
+                <button type="button" className="danger" onClick={() => deleteMarketplaceListing(listing.id)}><Icon name="trash" />Delete</button>
+              </>}
+              {listingInterests.length > 0 && <button type="button" className="admin-interest-launcher" onClick={() => { setOpenInterestListingId(listing.id); setOpenInterestId(null); }}><Icon name="people" />Interested ({listingInterests.length})</button>}
+              <button type="button" className="admin-vehicle-details-launcher" onClick={() => setSelectedListing(listing)}><Icon name="eye" />View details</button>
+              {listing.status === "Submitted" && <>
+                <button onClick={() => updateListingStatus(listing.id, "Active")}>Approve</button>
+                <button onClick={() => updateListingStatus(listing.id, "Changes Required")}>Changes</button>
+                <button className="danger" onClick={() => updateListingStatus(listing.id, "Rejected")}>Reject</button>
+              </>}
+            </div>
+            {soldListingId === listing.id && <form className="admin-sold-form" onSubmit={(event) => {
+              const saved = markAdminListingSold(event, listing.id);
+              if (saved) setSoldListingId(null);
+            }}>
+              <div className="admin-sold-form-head"><strong>Mark vehicle as sold</strong><button type="button" className="icon-button" aria-label="Close sold form" onClick={() => setSoldListingId(null)}><Icon name="close" /></button></div>
+              <label>Buyer name<input name="buyerName" placeholder="Buyer full name" required /></label>
+              <label>Sold date<input name="soldDate" type="date" required /></label>
+              <label>Sold type<input name="soldType" placeholder="Direct sale / Finance / Dealer" required /></label>
+              <div className="admin-sold-form-actions"><button type="button" className="secondary-button" onClick={() => setSoldListingId(null)}>Cancel</button><button type="submit"><Icon name="check" />Confirm sold</button></div>
+            </form>}
           </article>
         );
       })}
-      </section> : <section className="empty-state-panel compact-empty"><Icon name="search" /><h3>No listings match these filters</h3><p>Reset the filters or create another listing from Fleet.</p><button type="button" onClick={resetFilters}><Icon name="refresh" />Reset filters</button></section>}
+      </section> : <section className="empty-state-panel compact-empty"><Icon name="search" /><h3>No listings available</h3><p>Create another listing from Fleet.</p><button type="button" onClick={openFleet}><Icon name="plus" />Create listing</button></section>}
       </>
-      {selectedListing && <MarketplaceVehicleModal listing={selectedListing} vehicle={getDataVehicle(data, selectedListing.vehicleId)} closing={(data.saleClosings ?? []).find((item) => item.listingId === selectedListing.id)} isAdmin onClose={() => setSelectedListing(null)} />}
+      {openInterestListing && <div className="detail-modal-backdrop admin-interest-modal-backdrop" role="presentation" onMouseDown={closeInterestModal}>
+        <section className="detail-modal admin-interest-modal" role="dialog" aria-modal="true" aria-labelledby="admin-interest-modal-title" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="detail-modal-head admin-interest-modal-head">
+            <div>
+              <span className="admin-interest-panel-kicker">Marketplace responses</span>
+              <h2 id="admin-interest-modal-title">Interested buyers</h2>
+              <p>{openInterestListing.title} · {openInterestListing.location}</p>
+            </div>
+            <button type="button" className="icon-button close-button" aria-label="Close interested buyers" title="Close" onClick={closeInterestModal}><Icon name="close" /></button>
+          </div>
+          <div className="admin-interest-modal-body">
+            <div className="admin-interest-modal-summary"><strong>{openListingInterests.length} interested customer{openListingInterests.length === 1 ? "" : "s"}</strong><span>Review the form details and approve vehicle details from here.</span></div>
+            <div className="admin-interest-list">
+              {openListingInterests.map((interest) => <AdminMarketplaceInterestChat key={interest.id} interest={interest} onApprove={approveInterest} expanded={openInterestId === interest.id} onToggle={() => setOpenInterestId((current) => current === interest.id ? null : interest.id)} />)}
+            </div>
+          </div>
+        </section>
+      </div>}
+      {selectedListing && <MarketplaceVehicleModal listing={selectedListing} vehicle={getDataVehicle(data, selectedListing.vehicleId)} relatedVehicles={data.vehicles.filter((candidate) => candidate.id !== selectedListing.vehicleId && candidate.clientId === getDataVehicle(data, selectedListing.vehicleId)?.clientId && normalizeRegNo(baseRegNo(candidate.regNo)) === normalizeRegNo(baseRegNo(getDataVehicle(data, selectedListing.vehicleId)?.regNo)))} closing={(data.saleClosings ?? []).find((item) => item.listingId === selectedListing.id)} isAdmin onClose={() => setSelectedListing(null)} />}
     </section>
   );
 }
 
-function MarketplaceVehicleModal({ listing, vehicle, closing, isAdmin = false, onClose }) {
-  const estimatedAmount = closing?.estimatedAmount ?? (vehicle ? liability(vehicle) : 0);
+function AdminMarketplaceInterestChat({ interest, onApprove, showHeader = true, expanded: controlledExpanded, onToggle }) {
+  const [approving, setApproving] = useState(false);
+  const [localExpanded, setLocalExpanded] = useState(false);
+  const expanded = typeof controlledExpanded === "boolean" ? controlledExpanded : localExpanded;
+  const approve = async () => {
+    if (interest.approvedAt || approving) return;
+    setApproving(true);
+    try {
+      await onApprove?.(interest.id);
+    } finally {
+      setApproving(false);
+    }
+  };
+  const toggleExpanded = () => {
+    if (onToggle) onToggle();
+    else setLocalExpanded((current) => !current);
+  };
+  return <article className={`admin-interest-item ${expanded ? "expanded" : "collapsed"}`}>
+    <div className="admin-interest-item-head">
+      <button type="button" className="admin-interest-item-trigger" aria-expanded={expanded} onClick={toggleExpanded}>
+        <strong>{interest.name || "Interested customer"}</strong>
+        <span className="admin-interest-item-chevron"><Icon name={expanded ? "close" : "chevron-down"} /></span>
+      </button>
+    </div>
+    {expanded && <>
+      <div className="admin-interest-buyer-details"><strong>{interest.name || "Interested customer"}</strong><small>{interest.createdAt ? new Date(interest.createdAt).toLocaleString("en-IN") : ""}</small></div>
+      <div className="admin-interest-contact"><a href={`tel:${interest.phone}`}>{interest.phone}</a><a href={`mailto:${interest.email}`}>{interest.email}</a></div>
+      <p><b>Address:</b> {interest.address}</p>
+      <button type="button" className={`admin-interest-approve ${interest.approvedAt ? "approved" : ""}`} onClick={approve} disabled={Boolean(interest.approvedAt) || approving}>
+        <Icon name={interest.approvedAt ? "check" : "send"} />
+        {interest.approvedAt ? "Vehicle details approved and sent" : approving ? "Sending vehicle details..." : "Approve & send vehicle details"}
+      </button>
+    </>}
+  </article>;
+}
+
+function LegacyAdminInterestChatsPage({ interests = [], onApprove, apiBase, token }) {
+  const [expandedInterestId, setExpandedInterestId] = useState(null);
+  const [liveInterests, setLiveInterests] = useState(interests);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => setLiveInterests(interests), [interests]);
+  useEffect(() => {
+    if (!apiBase || !token) return undefined;
+    let active = true;
+    let busy = false;
+    const loadInterestChats = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        const response = await fetch(`${apiBase}/api/marketplace-interests`, { headers: authHeaders(token), cache: "no-store" });
+        const result = await response.json().catch(() => []);
+        if (!response.ok) throw new Error(result.error || "Chat requests could not be loaded.");
+        if (active && Array.isArray(result)) {
+          setLiveInterests(result);
+          setLoadError("");
+        }
+      } catch (error) {
+        if (active) setLoadError(error.message || "Chat requests could not be loaded.");
+      } finally {
+        busy = false;
+      }
+    };
+    void loadInterestChats();
+    const intervalId = window.setInterval(loadInterestChats, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [apiBase, token]);
+  const visibleInterests = liveInterests;
+  return <section className="stack admin-interest-chats-page">
+    <div className="section-intro">
+      <div>
+        <p className="eyebrow">Marketplace interest</p>
+        <h2>Customer interest chats</h2>
+        <p>Approve a request to send the vehicle finance and compliance details into that customer’s private chat.</p>
+      </div>
+      <strong className="admin-interest-page-count">{visibleInterests.length} request{visibleInterests.length === 1 ? "" : "s"}</strong>
+    </div>
+    {loadError && <div className="admin-interest-page-error">{loadError}</div>}
+    {visibleInterests.length ? <div className="admin-interest-page-list">{visibleInterests.map((interest) => <article className="asset admin-interest-page-card" key={interest.id}>
+      <div className="admin-interest-user-head">
+        <span className="admin-interest-user-avatar">{String(interest.name || "?").slice(0, 1).toUpperCase()}</span>
+        <div className="admin-interest-user-copy"><strong>{interest.name || "Interested customer"}</strong><span>{interest.listingTitle || "Marketplace vehicle"} · {interest.listingLocation || interest.registration || "Vehicle interest"}</span><small>{interest.createdAt ? new Date(interest.createdAt).toLocaleString("en-IN") : ""}</small></div>
+        <Badge label={interest.approvedAt ? "Approved" : "Pending approval"} />
+      </div>
+      <AdminMarketplaceInterestChat interest={interest} onApprove={onApprove} showHeader={false} expanded={expandedInterestId === interest.id} onToggle={() => setExpandedInterestId((current) => current === interest.id ? null : interest.id)} />
+    </article>)}</div> : <section className="empty-state-panel"><Icon name="people" /><h3>No interest chats yet</h3><p>Customer I am Interested requests will appear here.</p></section>}
+  </section>;
+}
+
+function AdminInterestChatsPage({ interests = [], onApprove, onSend, apiBase, token }) {
+  const [liveInterests, setLiveInterests] = useState(interests);
+  const [selectedInterestId, setSelectedInterestId] = useState(null);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => setLiveInterests(interests), [interests]);
+  useEffect(() => {
+    if (!liveInterests.length) {
+      setSelectedInterestId(null);
+      return;
+    }
+    setSelectedInterestId((current) => {
+      if (current === null) return null;
+      return liveInterests.some((item) => item.id === current) ? current : null;
+    });
+  }, [liveInterests]);
+  useEffect(() => {
+    if (!apiBase || !token) return undefined;
+    let active = true;
+    let busy = false;
+    const loadInterestChats = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        const response = await fetch(`${apiBase}/api/marketplace-interests`, { headers: authHeaders(token), cache: "no-store" });
+        const result = await response.json().catch(() => []);
+        if (!response.ok) throw new Error(result.error || "Chat requests could not be loaded.");
+        if (active && Array.isArray(result)) {
+          setLiveInterests(result);
+          setLoadError("");
+        }
+      } catch (error) {
+        if (active) setLoadError(error.message || "Chat requests could not be loaded.");
+      } finally {
+        busy = false;
+      }
+    };
+    void loadInterestChats();
+    const intervalId = window.setInterval(loadInterestChats, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [apiBase, token]);
+
+  const selectedInterest = liveInterests.find((interest) => interest.id === selectedInterestId) ?? null;
+  const messages = selectedInterest?.messages ?? [];
+  const sendMessage = async (event) => {
+    event.preventDefault();
+    if (!selectedInterest || !draft.trim() || sending) return;
+    setSending(true);
+    const sent = await onSend?.(selectedInterest.id, draft);
+    if (sent) {
+      setLiveInterests((current) => current.map((item) => item.id === selectedInterest.id ? sent : item));
+      setDraft("");
+    }
+    setSending(false);
+  };
+  const approve = async () => {
+    if (!selectedInterest || selectedInterest.approvedAt || approving) return;
+    setApproving(true);
+    try {
+      const approved = await onApprove?.(selectedInterest.id);
+      if (approved) setLiveInterests((current) => current.map((item) => item.id === selectedInterest.id ? approved : item));
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  return <section className="stack admin-interest-chats-page">
+    <div className="section-intro admin-chat-page-intro">
+      <div>
+        <p className="eyebrow">Marketplace interest</p>
+        <h2>Customer interest chats</h2>
+        <p>Open a customer request and continue the conversation in a private WhatsApp-style chat.</p>
+      </div>
+      <strong className="admin-interest-page-count">{liveInterests.length} request{liveInterests.length === 1 ? "" : "s"}</strong>
+    </div>
+    {loadError && <div className="admin-interest-page-error">{loadError}</div>}
+    {liveInterests.length ? <div className="admin-chat-workspace">
+      <aside className="admin-chat-inbox" aria-label="Customer interest requests">
+        <div className="admin-chat-inbox-head"><strong>Chats</strong><span>{liveInterests.length}</span></div>
+        <div className="admin-chat-inbox-list">
+          {liveInterests.map((interest) => {
+            const lastMessage = interest.messages?.[interest.messages.length - 1];
+            return <button type="button" key={interest.id} className={`admin-chat-inbox-item ${selectedInterestId === interest.id ? "active" : ""}`} onClick={() => { setSelectedInterestId(interest.id); setDraft(""); }}>
+              <span className="admin-chat-avatar">{String(interest.name || "?").slice(0, 1).toUpperCase()}</span>
+              <span className="admin-chat-inbox-copy"><strong>{interest.name || "Interested customer"}</strong><small>{interest.listingTitle || "Marketplace vehicle"}</small><em>{lastMessage?.text || "I am interested in this vehicle"}</em></span>
+              <span className={`admin-chat-status-dot ${interest.approvedAt ? "approved" : "pending"}`} />
+            </button>;
+          })}
+        </div>
+      </aside>
+      <section className="admin-chat-conversation" aria-label="Selected customer chat">
+        {selectedInterest ? <>
+          <header className="admin-chat-conversation-head">
+            <span className="admin-chat-avatar large">{String(selectedInterest.name || "?").slice(0, 1).toUpperCase()}</span>
+            <div><strong>{selectedInterest.name || "Interested customer"}</strong><span>{selectedInterest.listingTitle || "Marketplace vehicle"} · {selectedInterest.listingLocation || selectedInterest.registration || "Vehicle interest"}</span></div>
+            <Badge label={selectedInterest.approvedAt ? "Approved" : "Pending approval"} />
+            <button type="button" className="admin-chat-close-button" aria-label="Close chat" title="Close chat" onClick={() => setSelectedInterestId(null)}><Icon name="close" /></button>
+          </header>
+          <div className="admin-chat-context"><span>{selectedInterest.phone || "No phone"}</span><span>{selectedInterest.email || "No email"}</span><span>{selectedInterest.address || "No address"}</span></div>
+          <div className="admin-chat-messages">
+            <div className="admin-chat-day">Marketplace interest</div>
+            {messages.length ? messages.map((message) => {
+              const sentByAdmin = String(message.senderRole || "").toLowerCase().includes("admin") || String(message.senderName || "").toLowerCase() === "admin";
+              return <div className={`admin-chat-bubble-row ${sentByAdmin ? "outgoing" : "incoming"}`} key={message.id}>
+              <div className="admin-chat-bubble"><strong>{sentByAdmin ? "Admin" : (message.senderName || selectedInterest.name)}</strong><p>{message.text}</p><time>{message.sentAt ? new Date(message.sentAt).toLocaleString("en-IN") : ""}</time></div>
+              </div>}) : <div className="admin-chat-empty">No messages yet. Start the conversation below.</div>}
+          </div>
+          {!selectedInterest.approvedAt && <div className="admin-chat-actions"><button type="button" className="admin-chat-approve" onClick={approve} disabled={approving}><Icon name="check" />{approving ? "Sending vehicle details..." : "Approve & send vehicle details"}</button></div>}
+          <form className="admin-chat-composer" onSubmit={sendMessage}>
+            <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Type a message" aria-label="Type a message" />
+            <button type="submit" aria-label="Send message" disabled={!draft.trim() || sending}><Icon name="send" /></button>
+          </form>
+        </> : <div className="admin-chat-no-selection"><Icon name="people" /><strong>Select a customer chat</strong><span>Choose a request from the list to view messages.</span></div>}
+      </section>
+    </div> : <section className="empty-state-panel"><Icon name="people" /><h3>No interest chats yet</h3><p>Customer I am Interested requests will appear here.</p></section>}
+  </section>;
+}
+
+function MarketplaceVehicleModal({ listing, vehicle, relatedVehicles = [], closing, isAdmin = false, publicView = false, onClose }) {
   return (
     <div className="detail-modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section className="detail-modal marketplace-detail-modal" role="dialog" aria-modal="true" aria-labelledby="marketplace-detail-title" onMouseDown={(event) => event.stopPropagation()}>
         <div className="detail-modal-head">
-          <div><p className="eyebrow">Marketplace listing</p><h2 id="marketplace-detail-title">{listing.title}</h2><p>{listing.location} | {listing.condition} condition</p></div>
+          <div><p className="eyebrow">Marketplace listing</p><h2 id="marketplace-detail-title">{listing.title}</h2><p>{listing.location}</p></div>
           <div className="detail-modal-actions"><Badge label={listing.status} /><button className="icon-button close-button" type="button" aria-label="Close details" onClick={onClose}><Icon name="close" /></button></div>
         </div>
-        {listing.photos?.length > 0 && <div className="marketplace-detail-photos">{listing.photos.map((photo) => photo.dataUrl && <img key={photo.id} src={photo.dataUrl} alt={photo.fileName} />)}</div>}
-        <div className="detail-summary-strip">
-          <div><span>Asking price</span><strong>{formatMoney(listing.price)}</strong></div>
-          <div><span>Estimated closing</span><strong>{formatMoney(estimatedAmount)}</strong></div>
-          <div><span>Bank-confirmed closing</span><strong>{closing?.bankConfirmedAmount ? formatMoney(closing.bankConfirmedAmount) : "Pending"}</strong></div>
-        </div>
+        {listing.photos?.length > 0 && <div className="marketplace-detail-photos">{listing.photos.map((photo, index) => listingPhotoSrc(photo) && <img key={photo.id || index} src={listingPhotoSrc(photo)} alt={photo.fileName || `Vehicle photo ${index + 1}`} />)}</div>}
+        {publicView ? <div className="detail-card-grid">
+          <DetailSection title="Vehicle" rows={[
+            ["Address", listing.location],
+            ["Registration", listing.registrationNo || vehicle?.regNo || "-"]
+          ]} />
+        </div> : <>
         <div className="detail-card-grid">
           <DetailSection title="Vehicle" rows={[
-            ["Registration", vehicle?.regNo],
-            ["Asset type", vehicle?.type],
-            ["Manufacturer", vehicle?.make],
-            ["Model", vehicle?.model],
+            ["Registration", listing.registrationNo || vehicle?.regNo],
+            ["Asset type", vehicle?.type || listing.vehicleType],
+            ["Manufacturer", vehicle?.make || listing.vehicleMake],
+            ["Model", vehicle?.model || listing.vehicleModel],
             ["Year", vehicle?.year],
             ["Kilometres", vehicle?.km ? `${vehicle.km.toLocaleString("en-IN")} km` : "-"],
             ["Asset status", vehicle?.status]
@@ -3607,8 +4149,11 @@ function MarketplaceVehicleModal({ listing, vehicle, closing, isAdmin = false, o
           <DetailSection title="Finance" rows={[
             ["Finance status", vehicle && liability(vehicle) > 0 ? "Financed" : "Loan-free"],
             ...(isAdmin ? [["Financier", vehicle?.financier], ["Loan account", vehicle?.loanAccount]] : []),
+            ["Total tenure", vehicle?.tenure ? `${vehicle.tenure} months` : "-"],
             ["Monthly EMI", vehicle?.emiAmount ? formatMoney(vehicle.emiAmount) : "-"],
-            ["EMI progress", vehicle?.tenure ? `${vehicle.paidEmi || 0} / ${vehicle.tenure} paid` : "-"],
+            ["EMI paid", vehicle?.paidEmi ?? 0],
+            ["EMI remaining", vehicle?.tenure ? Math.max(Number(vehicle.tenure) - Number(vehicle.paidEmi || 0), 0) : "-"],
+            ["Closing principal", vehicle ? formatMoney(vehicle.principal ?? vehicle.bankClosingPrincipal ?? vehicle.closingPrincipal ?? 0) : "-"],
             ["Public finance view", "Private bank documents hidden"]
           ]} />
           <DetailSection title="Insurance & compliance" rows={[
@@ -3626,7 +4171,25 @@ function MarketplaceVehicleModal({ listing, vehicle, closing, isAdmin = false, o
             ["Sold date", closing?.soldDate ? formatDisplayDate(closing.soldDate) : "Not sold"],
             ["Photos", `${listing.photos?.length || 0} uploaded`]
           ]} />
+          {isAdmin && relatedVehicles.map((relatedVehicle) => <DetailSection key={relatedVehicle.id} title={`${relatedVehicle.type || "Linked"} details`} rows={[
+            ["Registration", relatedVehicle.regNo],
+            ["Manufacturer", relatedVehicle.make],
+            ["Model", relatedVehicle.model],
+            ["Year", relatedVehicle.year],
+            ["Asset status", relatedVehicle.status],
+            ["Loan amount", relatedVehicle.loanAmount ? formatMoney(relatedVehicle.loanAmount) : "-"],
+            ["Total tenure", relatedVehicle.tenure ? `${relatedVehicle.tenure} months` : "-"],
+            ["Monthly EMI", relatedVehicle.emiAmount ? formatMoney(relatedVehicle.emiAmount) : "-"],
+            ["EMI paid", relatedVehicle.paidEmi ?? 0],
+            ["EMI remaining", relatedVehicle.tenure ? Math.max(Number(relatedVehicle.tenure) - Number(relatedVehicle.paidEmi || 0), 0) : "-"],
+            ["Closing principal", formatMoney(relatedVehicle.principal ?? relatedVehicle.bankClosingPrincipal ?? relatedVehicle.closingPrincipal ?? 0)],
+            ["Insurance expiry", formatDisplayDate(relatedVehicle.insuranceExpiry)],
+            ["Permit expiry", formatDisplayDate(relatedVehicle.permitExpiry)],
+            ["PUC expiry", formatDisplayDate(relatedVehicle.pucExpiry)],
+            ["Fitness expiry", formatDisplayDate(relatedVehicle.fitnessExpiry)]
+          ]} />)}
         </div>
+        </>}
       </section>
     </div>
   );
@@ -3905,15 +4468,15 @@ function CustomerPortal({ session, onLogout }) {
     () => data.listings.filter((l) => myVehicles.some((v) => v.id === l.vehicleId)),
     [data, myVehicles]
   );
-  const marketplaceListings = useMemo(
-    () => data.listings.filter((l) => {
-      if (!["Active", "Reserved"].includes(l.status)) return false;
-      const vehicle = myVehicles.find((item) => item.id === l.vehicleId);
-      const closing = (data.saleClosings ?? []).find((item) => item.listingId === l.id);
-      return vehicle?.status !== "Sold" && closing?.status !== "Sold";
-    }),
-    [data, myVehicles]
-  );
+    const marketplaceListings = useMemo(
+      () => data.listings.filter((l) => {
+        if (["Sold", "Rejected", "Disabled", "Changes Required"].includes(l.status)) return false;
+        const vehicle = myVehicles.find((item) => item.id === l.vehicleId);
+        const closing = (data.saleClosings ?? []).find((item) => item.listingId === l.id);
+        return vehicle?.status !== "Sold" && closing?.status !== "Sold";
+      }),
+      [data, myVehicles]
+    );
   const myImportedAssets = useMemo(
     // Keep the same raw finance-row source as the mobile customer app. The
     // app resolves the matching registration/loan row at display time, so a
@@ -4031,7 +4594,7 @@ function CustomerPortal({ session, onLogout }) {
       title: `${vehicle.year || ""} ${vehicle.make || vehicle.type} ${vehicle.model || "Vehicle"}`.trim(),
       price,
       location,
-      status: existing?.status ?? "Submitted",
+      status: existing?.status === "Sold" ? "Sold" : "Active",
       condition,
       photos
     };
@@ -4039,12 +4602,75 @@ function CustomerPortal({ session, onLogout }) {
       ...data,
       listings: [listing, ...data.listings.filter((item) => item.id !== listing.id)],
       notifications: [
-        { id: `n-${Date.now()}`, title: "Sale listing submitted", detail: `${listing.title} is waiting for Admin approval.`, target: "marketplace", unread: true },
+        { id: `n-${Date.now()}`, title: "Sale listing published", detail: `${listing.title} is now visible to all customers.`, target: "marketplace", unread: true },
         ...(data.notifications ?? [])
       ]
     };
-    await persistCustomerData(updated, "Vehicle listing submitted for Admin approval.");
+    await persistCustomerData(updated, "Vehicle listing published for all customers.");
     form.reset();
+  };
+
+  const deleteCustomerListing = async (listingId) => {
+    const listing = data.listings.find((item) => item.id === listingId);
+    if (!listing || !(listing.isOwner === true || myVehicles.some((vehicle) => vehicle.id === listing.vehicleId))) {
+      setLoadError("You can delete only your own listing.");
+      return;
+    }
+    if (!window.confirm("Delete this marketplace listing?")) return;
+    try {
+      const response = await fetch(`${API_BASE}/api/listings/${encodeURIComponent(listingId)}`, {
+        method: "DELETE",
+        headers: authHeaders(session.token)
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Listing could not be deleted.");
+      const updated = {
+        ...data,
+        listings: data.listings.filter((item) => item.id !== listingId),
+        vehicles: data.vehicles.map((vehicle) => vehicle.id === listing.vehicleId && vehicle.status === "Listed" ? { ...vehicle, status: "Active" } : vehicle)
+      };
+      await persistCustomerData(updated, "Listing deleted.");
+    } catch (error) {
+      setLoadError(error.message || "Listing could not be deleted.");
+    }
+  };
+
+  const submitMarketplaceInterest = async (listingId, details) => {
+    try {
+      const listing = data.listings.find((item) => item.id === listingId);
+      const response = await fetch(`${API_BASE}/api/marketplace-interests`, {
+        method: "POST",
+        headers: authHeaders(session.token, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ listingId, vehicleId: listing?.vehicleId, ...details })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Interest could not be sent.");
+      setData((current) => ({ ...current, marketplaceInterests: [result, ...(current.marketplaceInterests ?? []).filter((item) => item.id !== result.id)] }));
+      setLoadError("Interest sent to Admin successfully.");
+      return true;
+    } catch (error) {
+      setLoadError(error.message || "Interest could not be sent.");
+      return false;
+    }
+  };
+
+  const sendMarketplaceInterestMessage = async (interestId, text) => {
+    const cleanText = String(text || "").trim();
+    if (!cleanText) return false;
+    try {
+      const response = await fetch(`${API_BASE}/api/marketplace-interests/${encodeURIComponent(interestId)}/messages`, {
+        method: "POST",
+        headers: authHeaders(session.token, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ text: cleanText })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Message could not be sent.");
+      setData((current) => ({ ...current, marketplaceInterests: (current.marketplaceInterests ?? []).map((item) => item.id === interestId ? result : item) }));
+      return true;
+    } catch (error) {
+      setLoadError(error.message || "Message could not be sent.");
+      return false;
+    }
   };
 
   const submitCustomerProof = async (task, file, details = {}) => {
@@ -4198,7 +4824,7 @@ function CustomerPortal({ session, onLogout }) {
           />
         )}
         {sectionAllowed && section === "fleet" && (
-          <CustomerFleet vehicles={activeVehicles} linkedVehicles={activeVehiclePool} soldVehicles={soldVehicles} saleClosings={data.saleClosings} client={myClient} importedAssets={myImportedAssets} markVehicleSold={markCustomerVehicleSold} />
+            <CustomerFleet vehicles={activeVehicles} linkedVehicles={activeVehiclePool} soldVehicles={soldVehicles} saleClosings={data.saleClosings} client={myClient} importedAssets={myImportedAssets} markVehicleSold={markCustomerVehicleSold} submitListing={submitCustomerListing} />
         )}
         {sectionAllowed && section === "dues" && (
           <CustomerDues vehicles={activeVehiclePool} importedAssets={myImportedAssets} />
@@ -4207,10 +4833,10 @@ function CustomerPortal({ session, onLogout }) {
           <CustomerDocuments documents={myDocuments} vehicles={myVehicles} setSection={openPortalSection} />
        )}
         {sectionAllowed && section === "marketplace" && (
-          <CustomerMarketplace chat={marketplaceChat} listings={marketplaceListings} vehicles={data.vehicles} saleClosings={data.saleClosings} myVehicles={myVehicles} myVehicleIds={new Set(myVehicles.map((vehicle) => vehicle.id))} submitListing={submitCustomerListing} setSection={openPortalSection} />
+          <CustomerMarketplace chat={marketplaceChat} listings={marketplaceListings} interests={data.marketplaceInterests ?? []} vehicles={data.vehicles} saleClosings={data.saleClosings} myVehicleIds={new Set(myVehicles.map((vehicle) => vehicle.id))} deleteCustomerListing={deleteCustomerListing} submitMarketplaceInterest={submitMarketplaceInterest} setSection={openPortalSection} />
         )}
         {sectionAllowed && section === "chats" && (
-          <MarketplaceChat chat={marketplaceChat} clientId={customerClientId} />
+          <CustomerInterestChats interests={data.marketplaceInterests ?? []} onSend={sendMarketplaceInterestMessage} />
         )}
       </section>
     </main>
@@ -4299,7 +4925,7 @@ function CustomerDashboard({ client, vehicles, linkedVehicles = vehicles, dues, 
   );
 }
 
-function CustomerFleet({ vehicles, linkedVehicles = vehicles, soldVehicles = [], saleClosings = [], client, importedAssets = [], markVehicleSold }) {
+function CustomerFleet({ vehicles, linkedVehicles = vehicles, soldVehicles = [], saleClosings = [], client, importedAssets = [], markVehicleSold, submitListing }) {
   return (
     <section className="customer-fleet-page">
       <div className="customer-fleet-summary">
@@ -4320,6 +4946,20 @@ function CustomerFleet({ vehicles, linkedVehicles = vehicles, soldVehicles = [],
           <strong>{linkedVehicles.filter((vehicle) => vehicle.type === "Trailer").length}</strong>
         </div>
       </div>
+      {submitListing && vehicles.length > 0 && (
+        <details className="customer-action-panel customer-fleet-listing-panel">
+          <summary><Icon name="plus" /> Sell a vehicle from My Fleet</summary>
+          <p className="customer-fleet-listing-help">Publish a vehicle directly from your fleet. It will be visible to all customers without Admin approval.</p>
+          <form className="form-grid compact-form" onSubmit={submitListing}>
+            <label>Vehicle<select name="vehicleId" required defaultValue=""><option value="" disabled>Select your vehicle</option>{vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.regNo} | {vehicle.make} {vehicle.model}</option>)}</select></label>
+            <label>Asking price<input name="price" type="number" min="1" step="0.01" placeholder="950000" required /></label>
+            <label>Location<input name="location" placeholder="Ahmedabad" required /></label>
+            <label>Condition<select name="condition" defaultValue="Good"><option>Excellent</option><option>Good</option><option>Average</option></select></label>
+            <label className="span-2">Vehicle photos<input name="photos" type="file" accept="image/*" multiple /></label>
+            <button className="span-2" type="submit"><Icon name="store" />Publish sale listing</button>
+          </form>
+        </details>
+      )}
       <div className="customer-fleet-grid">
         {vehicles.map((v) => {
           const linkedTrailer = linkedVehicles.find((candidate) => candidate.type === "Trailer" && normalizeRegNo(baseRegNo(candidate.regNo)) === normalizeRegNo(baseRegNo(v.regNo)));
@@ -4700,8 +5340,34 @@ function CustomerDocuments({ documents, vehicles, setSection }) {
   );
 }
 
-function CustomerMarketplace({ chat, listings, vehicles, saleClosings = [], myVehicles, myVehicleIds, submitListing, setSection }) {
+function CustomerMarketplaceInterestForm({ onSubmit, onCancel }) {
+  const [details, setDetails] = useState({ name: "", phone: "", email: "", address: "", message: "" });
+  const [busy, setBusy] = useState(false);
+  const update = (field, value) => setDetails((current) => ({ ...current, [field]: value }));
+  return <form className="customer-interest-form" onSubmit={async (event) => {
+    event.preventDefault();
+    if (Object.values(details).some((value) => !value.trim())) return;
+    setBusy(true);
+    try {
+      if (await onSubmit(details)) onCancel();
+    } finally {
+      setBusy(false);
+    }
+  }}>
+    <div className="customer-interest-form-head"><strong>I am Interested</strong><button type="button" className="icon-button" onClick={onCancel} aria-label="Close interest form"><Icon name="close" /></button></div>
+    <label>Name<input value={details.name} onChange={(event) => update("name", event.target.value)} required placeholder="Your name" /></label>
+    <label>Number<input value={details.phone} onChange={(event) => update("phone", event.target.value)} required placeholder="Mobile number" /></label>
+    <label>Email<input type="email" value={details.email} onChange={(event) => update("email", event.target.value)} required placeholder="Email address" /></label>
+    <label>Address<input value={details.address} onChange={(event) => update("address", event.target.value)} required placeholder="Your address" /></label>
+    <label>Message<textarea value={details.message} onChange={(event) => update("message", event.target.value)} required placeholder="Write your message" /></label>
+    <div className="customer-interest-form-actions"><button type="button" className="secondary-button" onClick={onCancel}>Cancel</button><button type="submit" disabled={busy}><Icon name="send" />{busy ? "Sending..." : "Send Interest to Admin"}</button></div>
+  </form>;
+}
+
+function CustomerMarketplace({ chat, listings, interests = [], vehicles, saleClosings = [], myVehicleIds, deleteCustomerListing, submitMarketplaceInterest, setSection }) {
   const [selectedListing, setSelectedListing] = useState(null);
+  const [interestListingId, setInterestListingId] = useState(null);
+  const [marketplaceTab, setMarketplaceTab] = useState("browse");
   const [filters, setFilters] = useState({ assetType: "All", condition: "All", finance: "All", insurance: "All", location: "", maxPrice: "" });
   const [showFilters, setShowFilters] = useState(false);
   const publicListings = listings.filter((listing) => {
@@ -4709,7 +5375,12 @@ function CustomerMarketplace({ chat, listings, vehicles, saleClosings = [], myVe
     const closing = saleClosings.find((item) => item.listingId === listing.id);
     return listing.status !== "Sold" && vehicle?.status !== "Sold" && closing?.status !== "Sold";
   });
-  const filteredListings = publicListings.filter((listing) => {
+  const isOwnedListing = (listing) => myVehicleIds?.has(listing.vehicleId) || listing.isOwner === true;
+  const myListings = publicListings.filter(isOwnedListing);
+  const browseListings = publicListings.filter((listing) => !isOwnedListing(listing));
+  const appliedInterestIds = new Set(interests.map((interest) => interest.listingId));
+  const tabListings = marketplaceTab === "mine" ? myListings : browseListings;
+  const filteredListings = tabListings.filter((listing) => {
     const vehicle = vehicles.find((item) => item.id === listing.vehicleId);
     const vehicleLiability = vehicle ? liability(vehicle) : 0;
     const locationMatch = !filters.location.trim() || String(listing.location || "").toLowerCase().includes(filters.location.trim().toLowerCase());
@@ -4744,19 +5415,11 @@ function CustomerMarketplace({ chat, listings, vehicles, saleClosings = [], myVe
         <div className="customer-marketplace-toolbar-actions">
           <span className="customer-marketplace-count">{filteredListings.length} listing{filteredListings.length !== 1 ? "s" : ""}</span>
           <button className="filter-trigger customer-filter-trigger" type="button" onClick={() => setShowFilters(true)}><Icon name="filter" />Filters{activeFilterCount ? ` (${activeFilterCount})` : ""}</button>
-          <details className="customer-action-panel customer-sell-panel">
-            <summary><Icon name="plus" /> Sell a vehicle</summary>
-        <form className="form-grid compact-form" onSubmit={submitListing}>
-          <label>Vehicle<select name="vehicleId" required defaultValue=""><option value="" disabled>Select your vehicle</option>{myVehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.regNo} | {vehicle.make} {vehicle.model}</option>)}</select></label>
-          <label>Asking price<input name="price" type="number" min="1" step="0.01" placeholder="950000" required /></label>
-          <label>Location<input name="location" placeholder="Ahmedabad" required /></label>
-          <label>Condition<select name="condition" defaultValue="Good"><option>Excellent</option><option>Good</option><option>Average</option></select></label>
-          <label className="span-2">Vehicle photos<input name="photos" type="file" accept="image/*" multiple /></label>
-          <button className="span-2" type="submit"><Icon name="store" />Submit sale listing</button>
-        </form>
-        {myVehicles.length === 0 && <Empty text="No vehicle is available for a sale listing." />}
-          </details>
         </div>
+      </div>
+      <div className="customer-marketplace-tabs" role="tablist" aria-label="Marketplace listing views">
+        <button className={marketplaceTab === "mine" ? "active" : ""} type="button" onClick={() => setMarketplaceTab("mine")}>My Listings ({myListings.length})</button>
+        <button className={marketplaceTab === "browse" ? "active" : ""} type="button" onClick={() => setMarketplaceTab("browse")}>Browse Vehicles ({browseListings.length})</button>
       </div>
       {showFilters && <button className="filter-drawer-backdrop" type="button" aria-label="Close filters" onClick={() => setShowFilters(false)} />}
       <aside className={`filter-drawer customer-filter-drawer ${showFilters ? "open" : ""}`} aria-label="Marketplace filters">
@@ -4775,25 +5438,28 @@ function CustomerMarketplace({ chat, listings, vehicles, saleClosings = [], myVe
           const v = vehicles.find((x) => x.id === l.vehicleId);
           const closing = saleClosings.find((item) => item.listingId === l.id);
           const listingPhoto = l.photos?.[0];
-          const mine = myVehicleIds?.has(l.vehicleId);
+          const mine = isOwnedListing(l);
           return (
             <article className="asset" key={l.id}>
-              {listingPhoto?.dataUrl && <img className="listing-photo" src={listingPhoto.dataUrl} alt={l.title} />}
+              {listingPhotoSrc(listingPhoto) && <img className="listing-photo" src={listingPhotoSrc(listingPhoto)} alt={l.title} />}
               <div className="card-head">
                 <div>
                   <strong>{l.title}</strong>
-                  <span>{l.location} · {l.condition}</span>
+                  <span>{l.location}</span>
                 </div>
                 <Badge label={mine ? "My listing" : l.status} />
               </div>
-              <dl>
+              {mine ? <dl>
                 <div><dt>Price</dt><dd>{formatMoney(l.price)}</dd></div>
-                <div><dt>Vehicle</dt><dd>{v?.regNo ?? l.vehicleId}</dd></div>
+                <div><dt>Vehicle</dt><dd>{l.registrationNo || v?.regNo || l.vehicleId}</dd></div>
                 <div><dt>Photos</dt><dd>{l.photos?.length ?? 0}</dd></div>
                 <div><dt>Estimated closing</dt><dd>{closing ? formatMoney(closing.estimatedAmount) : formatMoney(v ? liability(v) : 0)}</dd></div>
                 <div><dt>Bank-confirmed closing</dt><dd>{closing?.bankConfirmedAmount ? formatMoney(closing.bankConfirmedAmount) : "Pending bank confirmation"}</dd></div>
-              </dl>
-              <div className="actions"><button type="button" onClick={() => setSelectedListing(l)}><Icon name="eye" />View details</button><ChatRequestButton chat={chat} listingId={l.id} mine={mine} openChats={() => setSection("chats")} /></div>
+              </dl> : <dl>
+                <div><dt>Address</dt><dd>{l.location || "-"}</dd></div>
+                <div><dt>Registration</dt><dd>{l.registrationNo || v?.regNo || "-"}</dd></div>
+              </dl>}
+              <div className="actions"><button type="button" onClick={() => setSelectedListing(l)}><Icon name="eye" />View details</button>{!mine && (appliedInterestIds.has(l.id) ? <button className="customer-interest-trigger applied" type="button" disabled><Icon name="check" />Already applied</button> : interestListingId === l.id ? <CustomerMarketplaceInterestForm onCancel={() => setInterestListingId(null)} onSubmit={(details) => submitMarketplaceInterest?.(l.id, details)} /> : <button className="customer-interest-trigger" type="button" onClick={() => setInterestListingId(l.id)}><Icon name="send" />I am Interested</button>)}{mine && <button className="danger" type="button" onClick={() => deleteCustomerListing?.(l.id)}>Delete listing</button>}</div>
             </article>
           );
         })}
@@ -4824,9 +5490,44 @@ function CustomerMarketplace({ chat, listings, vehicles, saleClosings = [], myVe
           </section>
         )}
       </div>
-      {selectedListing && <MarketplaceVehicleModal listing={selectedListing} vehicle={vehicles.find((vehicle) => vehicle.id === selectedListing.vehicleId)} closing={saleClosings.find((item) => item.listingId === selectedListing.id)} onClose={() => setSelectedListing(null)} />}
+      {selectedListing && <MarketplaceVehicleModal listing={selectedListing} vehicle={vehicles.find((vehicle) => vehicle.id === selectedListing.vehicleId)} closing={saleClosings.find((item) => item.listingId === selectedListing.id)} publicView={!isOwnedListing(selectedListing)} onClose={() => setSelectedListing(null)} />}
     </section>
   );
+}
+
+function CustomerInterestChats({ interests = [], onSend }) {
+  const [drafts, setDrafts] = useState({});
+  const [busyId, setBusyId] = useState("");
+  if (!interests.length) return <section className="settings-workload customer-interest-chats"><div className="settings-section-head"><div><h3>Admin interest chat</h3><p>Submit I am Interested on a listing to start a private chat with Admin.</p></div></div></section>;
+  return <section className="settings-workload customer-interest-chats">
+    <div className="settings-section-head"><div><h3>Admin interest chat</h3><p>Your form details and replies are visible only to you and Admin.</p></div><strong>{interests.length} request{interests.length === 1 ? "" : "s"}</strong></div>
+    <div className="customer-interest-chat-list">
+      {interests.map((interest) => <article className="customer-interest-chat" key={interest.id}>
+        <div className="card-head"><div><strong>{interest.listingTitle || "Marketplace vehicle"}</strong><span>{interest.registration || interest.listingLocation || "Interest request"}</span></div><Badge label="Admin chat" /></div>
+        <div className="customer-interest-chat-history">
+          {(interest.messages ?? []).map((message) => <div className={`customer-interest-message ${message.senderRole === "Admin" ? "admin" : "customer"}`} key={message.id}>
+            <strong>{message.senderName || (message.senderRole === "Admin" ? "Admin" : interest.name)}</strong>
+            <span>{message.text}</span>
+            <small>{message.sentAt ? new Date(message.sentAt).toLocaleString("en-IN") : ""}</small>
+          </div>)}
+        </div>
+        <form className="customer-interest-reply" onSubmit={async (event) => {
+          event.preventDefault();
+          const draft = String(drafts[interest.id] || "").trim();
+          if (!draft || busyId) return;
+          setBusyId(interest.id);
+          try {
+            if (await onSend?.(interest.id, draft)) setDrafts((current) => ({ ...current, [interest.id]: "" }));
+          } finally {
+            setBusyId("");
+          }
+        }}>
+          <input value={drafts[interest.id] || ""} onChange={(event) => setDrafts((current) => ({ ...current, [interest.id]: event.target.value }))} placeholder="Reply to Admin" aria-label="Reply to Admin" />
+          <button type="submit" disabled={busyId === interest.id}>{busyId === interest.id ? "Sending..." : "Send"}</button>
+        </form>
+      </article>)}
+    </div>
+  </section>;
 }
 
 
@@ -4965,6 +5666,7 @@ const iconPaths = {
   calendar: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>,
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   check: <path d="m5 12 4.2 4.2L19 6.5" />,
+  send: <><path d="m3 3 18 9-18 9 4-9-4-9Z" /><path d="M7 12h14" /></>,
   phone: <path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.8 19.8 0 0 1 3.1 5.18 2 2 0 0 1 5.11 3h3a2 2 0 0 1 2 1.72c.12.9.33 1.77.62 2.61a2 2 0 0 1-.45 2.11L9 10.72a16 16 0 0 0 4.28 4.28l1.28-1.28a2 2 0 0 1 2.11-.45c.84.29 1.71.5 2.61.62A2 2 0 0 1 22 16.92z" />,
   store: <><path d="M4 10v11h16V10" /><path d="M3 10h18L19 3H5z" /><path d="M9 21v-6h6v6" /></>,
   chart: <><path d="M3 3v18h18" /><path d="M7 16V9M12 16V5M17 16v-3" /></>,
@@ -5303,14 +6005,14 @@ function buildSmartAlerts(data, includeAll = false) {
 
   data.vehicles.forEach((vehicle) => {
     const clientName = getDataClient(data, vehicle.clientId)?.name;
-    pushAlert({ clientId: vehicle.clientId, clientName, vehicle: vehicle.regNo, type: "Policy", date: vehicle.insuranceExpiry || vehicle.policyEnd });
+    pushAlert({ clientId: vehicle.clientId, clientName, vehicle: vehicle.regNo, type: "Insurance", date: vehicle.insuranceExpiry || vehicle.policyEnd });
     pushAlert({ clientId: vehicle.clientId, clientName, vehicle: vehicle.regNo, type: "Permit", date: vehicle.permitExpiry || vehicle.permitExpired });
     pushAlert({ clientId: vehicle.clientId, clientName, vehicle: vehicle.regNo, type: "National Permit", date: vehicle.nationalPermitExpiry || vehicle.nationalPermitExpired });
     pushAlert({ clientId: vehicle.clientId, clientName, vehicle: vehicle.regNo, type: "PUC", date: vehicle.pucExpiry || vehicle.pucExpired });
     pushAlert({ clientId: vehicle.clientId, clientName, vehicle: vehicle.regNo, type: "Fitness", date: vehicle.fitnessExpiry || vehicle.fitnessExpired });
 
     (vehicle.insuranceHistory ?? []).forEach((entry) => {
-      pushAlert({ clientId: vehicle.clientId, clientName, vehicle: vehicle.regNo, type: "Policy", date: entry.expiryDate || entry.expiry });
+      pushAlert({ clientId: vehicle.clientId, clientName, vehicle: vehicle.regNo, type: "Insurance", date: entry.expiryDate || entry.expiry });
     });
     (vehicle.complianceHistory ?? []).forEach((entry) => {
       const type = entry.kind === "Road Tax" ? "National Permit" : entry.kind;
@@ -5323,7 +6025,7 @@ function buildSmartAlerts(data, includeAll = false) {
   (data.clientImports ?? []).forEach((importItem) => {
     const clientName = getDataClient(data, importItem.clientId)?.name;
     (importItem.rows ?? []).filter((row) => row.regNo && !isBodyRow(row)).forEach((row) => {
-      pushAlert({ clientId: importItem.clientId, clientName, vehicle: row.regNo, type: "Policy", date: row.policyEnd || row.policyExpiry || row.insuranceExpiry });
+      pushAlert({ clientId: importItem.clientId, clientName, vehicle: row.regNo, type: "Insurance", date: row.policyEnd || row.policyExpiry || row.insuranceExpiry });
       pushAlert({ clientId: importItem.clientId, clientName, vehicle: row.regNo, type: "PUC", date: row.pucExpired || row.pucExpiry });
       pushAlert({ clientId: importItem.clientId, clientName, vehicle: row.regNo, type: "Fitness", date: row.fitnessExpired || row.fitnessExpiry });
       pushAlert({ clientId: importItem.clientId, clientName, vehicle: row.regNo, type: "Permit", date: row.permitExpired || row.permitExpiry });
@@ -5872,6 +6574,7 @@ function isDuplicateTruckForTrailer(vehicle, allVehicles = []) {
 }
 
 function excelRowToVehicle(row, clientId, id) {
+  const isTrailer = isBodyRow(row) || String(row.assetType || row.asset_type || row.type || "").toLowerCase() === "trailer";
   const importedSchedule = Array.isArray(row.emiSchedule) ? row.emiSchedule.filter((entry) => entry?.dueDate && toNumber(entry.amount) > 0) : [];
   const loanPlan = importedSchedule.length
     ? {
@@ -5905,10 +6608,10 @@ function excelRowToVehicle(row, clientId, id) {
   return {
     id,
     clientId,
-    type: "Truck",
-    regNo: baseRegNo(row.regNo),
-    make: row.manufacturer || "Imported",
-    model: row.model || "Vehicle",
+    type: isTrailer ? "Trailer" : "Truck",
+    regNo: isTrailer ? String(row.regNo || "").trim() : baseRegNo(row.regNo),
+    make: row.manufacturer || (isTrailer ? "Trailer" : "Imported"),
+    model: row.model || (isTrailer ? "Body" : "Vehicle"),
     year: Number(String(row.yearOfMfg || "").match(/\d{4}/)?.[0]) || new Date().getFullYear(),
     km: 0,
     principal: autoClosingPrincipal(row) || toNumber(row.loanAmount),
@@ -5943,6 +6646,28 @@ function excelRowToVehicle(row, clientId, id) {
     permitExpiry: row.permitExpired || row.nationalPermitExpired || "-",
     status: "Active"
   };
+}
+
+function materializeImportedTrailerVehicles(data) {
+  const existingKeys = new Set((data.vehicles ?? []).map((vehicle) => {
+    const type = vehicle.type === "Trailer" ? "Trailer" : "Truck";
+    return `${vehicle.clientId}:${type}:${normalizeRegNo(baseRegNo(vehicle.regNo))}`;
+  }));
+  const importedTrailers = [];
+  (data.clientImports ?? []).forEach((imported) => {
+    (imported.rows ?? []).forEach((row) => {
+      const isTrailer = isBodyRow(row) || String(row.assetType || row.asset_type || row.type || "").toLowerCase() === "trailer";
+      const regNo = String(row.regNo || row.reg_no || "").trim();
+      if (!isTrailer || !regNo) return;
+      const key = `${imported.clientId}:Trailer:${normalizeRegNo(baseRegNo(regNo))}`;
+      if (existingKeys.has(key)) return;
+      existingKeys.add(key);
+      importedTrailers.push(excelRowToVehicle(row, imported.clientId, `v-imported-${imported.clientId}-trailer-${normalizeRegNo(regNo)}`));
+    });
+  });
+  return importedTrailers.length
+    ? { ...data, vehicles: [...importedTrailers, ...(data.vehicles ?? [])] }
+    : data;
 }
 
 function mergePdfIntoVehicle(vehicle, row) {
