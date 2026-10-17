@@ -14,7 +14,9 @@ function setCors(res, origin) {
 function getPath(req) {
   const value = req.query?.path;
   if (Array.isArray(value)) return value.join("/");
-  return String(value || "");
+  if (value) return String(value);
+  const pathname = String(req.url || "").split("?", 1)[0];
+  return decodeURIComponent(pathname.replace(/^\/api\/?/, "").replace(/^\/+|\/+$/g, ""));
 }
 
 function getBody(req) {
