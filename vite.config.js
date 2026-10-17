@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 const apiProxy = {
-  target: "https://app-webappication.vercel.app",
+  target: "https://erp.aakashfinance.com",
   changeOrigin: true,
   secure: true,
   configure(proxy) {

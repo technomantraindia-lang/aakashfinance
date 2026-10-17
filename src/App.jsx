@@ -24,16 +24,14 @@ import {
 // ─── Login is verified against the backend database (/api/login) ─────────────
 // No hardcoded demo credentials. Admin creates customer accounts in-app.
 function getApiBase() {
-  // The live website is hosted on Hostinger, while its API is behind the
-  // Hostinger edge challenge. Route browser and mobile traffic through the
-  // deployed Vercel proxy, which forwards requests server-to-server.
-  const deployedProxy = "https://app-webappication.vercel.app";
+  // The production API is deployed at the ERP backend hostname.
+  const deployedBackend = "https://erp.aakashfinance.com";
   if (typeof window !== "undefined") {
-    return import.meta.env.DEV ? "" : deployedProxy;
+    return import.meta.env.DEV ? "" : deployedBackend;
   }
   const envBase = import.meta.env.VITE_API_BASE_URL;
   if (envBase) return envBase.replace(/\/$/, "");
-  return "https://erp.aakashfinance.com";
+  return deployedBackend;
 }
 
 const API_BASE = getApiBase();
