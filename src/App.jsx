@@ -70,6 +70,19 @@ function authHeaders(token, headers = {}) {
   return token ? { ...headers, Authorization: `Bearer ${token}` } : headers;
 }
 
+function backendConnectionError(error, endpoint = `${API_BASE}/api/health`) {
+  if (error?.status) return error;
+  const message = String(error?.message || "");
+  const isNetworkFailure = error?.name === "TypeError"
+    || message === "Failed to fetch"
+    || message === "Network request failed"
+    || message.toLowerCase().includes("network request failed");
+  if (!isNetworkFailure) return error;
+  const connectionError = new Error(`Backend unavailable. Check ${endpoint}, then restart the backend service.`);
+  connectionError.status = 0;
+  return connectionError;
+}
+
 // Keeps one authenticated long-poll connection open. The server only
 // responds when a write happens (or after a short heartbeat timeout), so this
 // updates every open browser without interval refreshes or UI blinking.
@@ -474,7 +487,7 @@ async function fetchBackendData(token) {
       }
       return response.json();
     } catch (error) {
-      if (required) throw error;
+      if (required) throw backendConnectionError(error);
       return [];
     }
   };
@@ -996,24 +1009,29 @@ function prepareSyncData(data) {
 
 async function syncDataToBackend(data, token) {
   const syncData = prepareSyncData(data);
-  const response = await fetch(`${API_BASE}/api/sync`, {
-    method: "POST",
-    headers: authHeaders(token, { "Content-Type": "application/json" }),
-    body: JSON.stringify({
-      clients: syncData.clients ?? [],
-      vehicles: syncData.vehicles ?? [],
-      dueTasks: syncData.dueTasks ?? [],
-      listings: syncData.listings ?? [],
-      callerActivities: syncData.callerActivities ?? [],
-      auditLogs: syncData.auditLogs ?? [],
-      importRows: syncData.importRows ?? [],
-      clientImports: syncData.clientImports ?? [],
-      documents: syncData.documents ?? [],
-      verificationItems: syncData.verificationItems ?? [],
-      saleClosings: syncData.saleClosings ?? [],
-      marketplaceThreads: syncData.marketplaceThreads ?? []
-    })
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE}/api/sync`, {
+      method: "POST",
+      headers: authHeaders(token, { "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        clients: syncData.clients ?? [],
+        vehicles: syncData.vehicles ?? [],
+        dueTasks: syncData.dueTasks ?? [],
+        listings: syncData.listings ?? [],
+        callerActivities: syncData.callerActivities ?? [],
+        auditLogs: syncData.auditLogs ?? [],
+        importRows: syncData.importRows ?? [],
+        clientImports: syncData.clientImports ?? [],
+        documents: syncData.documents ?? [],
+        verificationItems: syncData.verificationItems ?? [],
+        saleClosings: syncData.saleClosings ?? [],
+        marketplaceThreads: syncData.marketplaceThreads ?? []
+      })
+    });
+  } catch (error) {
+    throw backendConnectionError(error);
+  }
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
     const backendError = new Error(formatBackendError(result, response.status) || "Backend sync failed.");
