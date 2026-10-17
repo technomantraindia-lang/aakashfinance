@@ -129,17 +129,13 @@ function startRealtimeListener(apiBase, token, onChange) {
   };
 }
 
-// ─── Login Page (role selection: Admin or Customer) ──────────────────────────
+// ─── Login Page (the backend detects the account role after sign-in) ──────────
 function LoginPage({ onLogin }) {
-  const [role, setRole] = useState("admin");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  const isAdmin = role === "admin";
-  const isCaller = role === "caller";
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -161,9 +157,6 @@ function LoginPage({ onLogin }) {
         : accountRole.toLowerCase() === "caller"
           ? "caller"
           : "customer";
-      // The authenticated backend role is authoritative. Keep the selector in
-      // sync so a customer/caller account cannot remain highlighted as Admin.
-      if (accountKey !== role) setRole(accountKey);
       const kind = accountKey === "admin" ? "admin" : accountKey === "caller" ? "caller" : "customer";
       onLogin({ ...data, kind });
     } catch (err) {
@@ -267,16 +260,10 @@ function LoginPage({ onLogin }) {
           <div className="login-card-head">
             <span className="login-card-eyebrow">Welcome back</span>
             <h1 className="login-title">Sign in to continue</h1>
-            <p className="login-subtitle">
-              {isAdmin
-                ? "Enter your admin credentials to access the console."
-                : isCaller
-                  ? "Sign in with your caller account to open the assigned queue."
-                  : "Sign in with your customer account to view your fleet and dues."}
-            </p>
+            <p className="login-subtitle">Use your registered email and password to access your secure workspace.</p>
           </div>
 
-          <div className="login-role" role="radiogroup" aria-label="Login role">
+          {false && <div className="login-role" role="radiogroup" aria-label="Login role">
             <button
               type="button"
               className={role === "admin" ? "active" : ""}
@@ -303,24 +290,36 @@ function LoginPage({ onLogin }) {
                 <small>Fleet, dues & marketplace</small>
               </span>
             </button>
+          </div>}
+
+          <div className="login-access-note">
+            <span className="login-access-icon"><Icon name="lock" /></span>
+            <span>
+              <strong>Secure account access</strong>
+              <small>Your account type is detected automatically after sign in.</small>
+            </span>
           </div>
 
           <form className="login-form" onSubmit={handleSubmit} noValidate>
             <label>
               Email
-              <input
-                type="email"
-                autoComplete="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder={isAdmin ? "admin@kuber.local" : "owner@company.com"}
-                required
-                aria-label="Email"
-              />
+              <span className="login-input-wrap">
+                <Icon name="mail" />
+                <input
+                  type="email"
+                  autoComplete="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Enter your email or login ID"
+                  required
+                  aria-label="Email"
+                />
+              </span>
             </label>
             <label>
               Password
               <div className="login-password-wrap">
+                <Icon name="lock" />
                 <input
                   type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
@@ -5906,6 +5905,7 @@ const iconPaths = {
   home: <><path d="m3 11 9-8 9 8" /><path d="M5 10v10h14V10" /></>,
   person: <><circle cx="12" cy="7" r="3.5" /><path d="M5 21a7 7 0 0 1 14 0" /></>,
   people: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>,
+  mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></>,
   truck: <><path d="M10 17h4V5H2v12h3" /><path d="M14 8h4l4 4v5h-3" /><circle cx="7.5" cy="17.5" r="2.5" /><circle cx="16.5" cy="17.5" r="2.5" /></>,
   calendar: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>,
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
