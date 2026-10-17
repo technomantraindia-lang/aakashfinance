@@ -70,6 +70,52 @@ function authHeaders(token, headers = {}) {
   return token ? { ...headers, Authorization: `Bearer ${token}` } : headers;
 }
 
+// Keeps one authenticated long-poll connection open. The server only
+// responds when a write happens (or after a short heartbeat timeout), so this
+// updates every open browser without interval refreshes or UI blinking.
+function startRealtimeListener(apiBase, token, onChange) {
+  if (!apiBase || !token) return () => {};
+  let active = true;
+  let sequence = 0;
+  let controller = null;
+  let retryTimer = null;
+
+  const listen = async () => {
+    while (active) {
+      controller = new AbortController();
+      try {
+        const response = await fetch(`${apiBase}/api/realtime?since=${sequence}`, {
+          headers: authHeaders(token),
+          cache: "no-store",
+          signal: controller.signal
+        });
+        if (response.status === 204) continue;
+        if (!response.ok) throw new Error("Realtime connection failed");
+        const event = await response.json();
+        const nextSequence = Number(event?.sequence || 0);
+        if (nextSequence > sequence) {
+          sequence = nextSequence;
+          await onChange();
+        }
+      } catch (error) {
+        if (!active || error?.name === "AbortError") break;
+        await new Promise((resolve) => {
+          retryTimer = window.setTimeout(resolve, 2000);
+        });
+      } finally {
+        controller = null;
+      }
+    }
+  };
+
+  void listen();
+  return () => {
+    active = false;
+    controller?.abort();
+    if (retryTimer) window.clearTimeout(retryTimer);
+  };
+}
+
 // ─── Login Page (role selection: Admin or Customer) ──────────────────────────
 function LoginPage({ onLogin }) {
   const [role, setRole] = useState("admin");
@@ -305,7 +351,7 @@ const navItems = [
   ["fleet", "Fleet", "truck"],
   ["dues", "Smart Alert", "calendar"],
   ["marketplace", "Marketplace", "store"],
-  ["chat-requests", "Chat requests", "people"],
+  ["chat-requests", "Interest chat", "people"],
   ["rules", "Rules", "settings"],
   ["settings", "Admin profile", "person"]
 ];
@@ -1186,7 +1232,9 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
       try {
         const latest = await fetchBackendData(session.token);
         if (active && Array.isArray(latest.marketplaceInterests)) {
-          setData((current) => ({ ...current, marketplaceInterests: latest.marketplaceInterests }));
+          setData((current) => JSON.stringify(current.marketplaceInterests ?? []) === JSON.stringify(latest.marketplaceInterests)
+            ? current
+            : { ...current, marketplaceInterests: latest.marketplaceInterests });
         }
       } catch {
         // Keep the current chat list visible during a temporary network failure.
@@ -1195,10 +1243,10 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
       }
     };
     void refreshInterestChats();
-    const intervalId = window.setInterval(refreshInterestChats, 5000);
+    window.addEventListener("focus", refreshInterestChats);
     return () => {
       active = false;
-      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshInterestChats);
     };
   }, [section, session.token]);
 
@@ -1213,19 +1261,19 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
       try {
         const latest = await fetchBackendData(session.token);
         if (active && refreshVersion === mutationVersionRef.current && pendingMutationCountRef.current === 0 && !readPendingSync()) {
-          setData(latest);
-          setSaveStatus("Database");
+          setData((current) => JSON.stringify(current) === JSON.stringify(latest) ? current : latest);
+          setSaveStatus((current) => current === "Saving" ? current : "Database");
         }
       } catch (error) {
         // Keep the current screen usable when the network is temporarily unavailable.
       }
     };
-    const intervalId = window.setInterval(refreshFromDatabase, 10000);
     window.addEventListener("focus", refreshFromDatabase);
+    const stopRealtime = startRealtimeListener(API_BASE, session.token, refreshFromDatabase);
     return () => {
       active = false;
-      window.clearInterval(intervalId);
       window.removeEventListener("focus", refreshFromDatabase);
+      stopRealtime();
     };
   }, [session.token]);
 
@@ -1359,7 +1407,9 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
     } catch (err) {
       setSaveStatus("Error");
       setToast(err.message || "Failed to create customer account.");
+      return false;
     }
+    return true;
   };
 
   const updateTaskStatus = (taskId, status, remark = "Admin web action saved") => {
@@ -1677,8 +1727,9 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
   const deleteMarketplaceListing = async (listingId) => {
     const listing = data.listings.find((item) => item.id === listingId);
     if (!listing || !window.confirm(`Delete ${listing.title || "this listing"}?`)) return;
+    const deletedListingId = String(listingId);
     try {
-      const response = await enqueueMutation(() => fetch(`${API_BASE}/api/listings/${encodeURIComponent(listingId)}`, {
+      const response = await enqueueMutation(() => fetch(`${API_BASE}/api/listings/${encodeURIComponent(deletedListingId)}`, {
         method: "DELETE",
         headers: authHeaders(session.token)
       }));
@@ -1686,9 +1737,11 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
       if (!response.ok) throw new Error(result.error || "Listing could not be deleted.");
       const updated = {
         ...data,
-        listings: data.listings.filter((item) => item.id !== listingId),
-        saleClosings: (data.saleClosings ?? []).filter((item) => item.listingId !== listingId),
-        marketplaceThreads: (data.marketplaceThreads ?? []).filter((item) => item.listingId !== listingId)
+        listings: data.listings.filter((item) => String(item.id) !== deletedListingId),
+        saleClosings: (data.saleClosings ?? []).filter((item) => String(item.listingId ?? "") !== deletedListingId),
+        marketplaceThreads: (data.marketplaceThreads ?? []).filter((item) => String(item.listingId ?? "") !== deletedListingId),
+        // Keep every other interest chat, including already approved chats.
+        marketplaceInterests: (data.marketplaceInterests ?? []).filter((item) => String(item.listingId ?? "") !== deletedListingId)
       };
       persist(withAudit(updated, {
         module: "Marketplace",
@@ -2641,6 +2694,9 @@ function Dashboard({ data, totals, setSection }) {
 
 function Clients({ data, addClient, openClientProfile, deleteClientAndAccount }) {
   const [search, setSearch] = useState("");
+  const [showAddClient, setShowAddClient] = useState(false);
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
   const normalizedSearch = search.trim().toLowerCase();
   const filteredClients = data.clients.filter((client) => {
     if (!normalizedSearch) return true;
@@ -2648,33 +2704,30 @@ function Clients({ data, addClient, openClientProfile, deleteClientAndAccount })
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(normalizedSearch));
   });
+  const totalPages = Math.max(1, Math.ceil(filteredClients.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const visibleClients = filteredClients.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  useEffect(() => setPage(1), [normalizedSearch]);
+  const handleAddClient = async (event) => {
+    const created = await addClient(event);
+    if (created) {
+      setShowAddClient(false);
+      setPage(1);
+    }
+  };
 
   return (
-    <section className="clients-layout">
-      <section className="client-create-card">
-        <div className="client-card-head">
-          <span className="client-head-icon"><Icon name="plus" /></span>
-          <div>
-            <h2>Create Client</h2>
-            <span>New record</span>
-          </div>
-        </div>
-        <form className="client-form" onSubmit={addClient}>
-          <label>Name<input name="name" placeholder="New Client" required /></label>
-          <label>City<input name="city" placeholder="Jaipur" required /></label>
-          <label>Phone<input name="phone" placeholder="+919812345678" required /></label>
-          <label>Email (login)<input name="email" type="email" placeholder="owner@company.com" required /></label>
-          <button type="submit"><Icon name="plus" />Add client & create account</button>
-        </form>
-      </section>
-
+    <section className="clients-layout clients-layout-single">
       <section className="clients-table-card">
         <div className="clients-table-head">
           <div>
             <h2>Client Directory</h2>
             <span>{filteredClients.length} of {data.clients.length} records</span>
           </div>
-          <span className="client-total-pill">{data.clients.length} Clients</span>
+          <div className="clients-table-head-actions">
+            <span className="client-total-pill">{data.clients.length} Clients</span>
+            <button className="clients-add-button" type="button" onClick={() => setShowAddClient(true)}><Icon name="plus" />Add client</button>
+          </div>
         </div>
         <div className="clients-directory-toolbar">
           <label className="clients-search-field">
@@ -2692,7 +2745,7 @@ function Clients({ data, addClient, openClientProfile, deleteClientAndAccount })
         <table className="clients-table">
           <thead><tr><th>Client</th><th>City</th><th>Phone</th><th>Vehicles</th><th>Actions</th></tr></thead>
           <tbody>
-            {filteredClients.map((client) => {
+            {visibleClients.map((client) => {
               const vehicleCount = data.vehicles.filter((vehicle) => vehicle.clientId === client.id && !isBodyRegNo(vehicle.regNo)).length;
               return (
                 <tr key={client.id}>
@@ -2718,7 +2771,7 @@ function Clients({ data, addClient, openClientProfile, deleteClientAndAccount })
                 </tr>
               );
             })}
-            {filteredClients.length === 0 && (
+            {visibleClients.length === 0 && (
               <tr>
                 <td className="clients-empty-cell" colSpan="5">No clients match your search.</td>
               </tr>
@@ -2726,7 +2779,29 @@ function Clients({ data, addClient, openClientProfile, deleteClientAndAccount })
           </tbody>
         </table>
         </div>
+        {filteredClients.length > 0 && <div className="clients-pagination">
+          <span>Page {currentPage} of {totalPages}</span>
+          <div>
+            <button type="button" disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</button>
+            <button type="button" disabled={currentPage === totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))}>Next</button>
+          </div>
+        </div>}
       </section>
+      {showAddClient && <div className="client-modal-backdrop" role="presentation">
+        <section className="client-modal" role="dialog" aria-modal="true" aria-labelledby="add-client-title" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="client-modal-head">
+            <div><span className="client-head-icon"><Icon name="plus" /></span><div><h2 id="add-client-title">Create Client</h2><span>New customer account</span></div></div>
+            <button className="icon-button" type="button" onClick={() => setShowAddClient(false)} aria-label="Close add client form"><Icon name="close" /></button>
+          </div>
+          <form className="client-form" onSubmit={handleAddClient}>
+            <label>Name<input name="name" placeholder="New Client" required autoFocus /></label>
+            <label>City<input name="city" placeholder="Jaipur" required /></label>
+            <label>Phone<input name="phone" placeholder="+919812345678" required /></label>
+            <label>Email (login)<input name="email" type="email" placeholder="owner@company.com" required /></label>
+            <div className="client-modal-actions"><button className="secondary-button" type="button" onClick={() => setShowAddClient(false)}>Cancel</button><button type="submit"><Icon name="plus" />Create client</button></div>
+          </form>
+        </section>
+      </div>}
     </section>
   );
 }
@@ -4023,10 +4098,10 @@ function LegacyAdminInterestChatsPage({ interests = [], onApprove, apiBase, toke
       }
     };
     void loadInterestChats();
-    const intervalId = window.setInterval(loadInterestChats, 5000);
+    const stopRealtime = startRealtimeListener(apiBase, token, loadInterestChats);
     return () => {
       active = false;
-      window.clearInterval(intervalId);
+      stopRealtime();
     };
   }, [apiBase, token]);
   const visibleInterests = liveInterests;
@@ -4092,10 +4167,10 @@ function AdminInterestChatsPage({ interests = [], onApprove, onSend, apiBase, to
       }
     };
     void loadInterestChats();
-    const intervalId = window.setInterval(loadInterestChats, 5000);
+    const stopRealtime = startRealtimeListener(apiBase, token, loadInterestChats);
     return () => {
       active = false;
-      window.clearInterval(intervalId);
+      stopRealtime();
     };
   }, [apiBase, token]);
 
@@ -4164,8 +4239,8 @@ function AdminInterestChatsPage({ interests = [], onApprove, onSend, apiBase, to
                 ? message.kind
                 : index === 0 ? "interest-request" : /^ADMIN APPROVED VEHICLE DETAILS\b/i.test(String(message.text || "").trim()) ? "vehicle-details" : "chat";
               const reviewMessage = kind !== "chat";
-              return <div className={`admin-chat-bubble-row ${reviewMessage ? "review" : sentByAdmin ? "outgoing" : "incoming"}`} key={message.id}>
-              <div className="admin-chat-bubble"><strong>{sentByAdmin ? "Admin" : (message.senderName || selectedInterest.name)}</strong><p>{message.text}</p><time>{message.sentAt ? new Date(message.sentAt).toLocaleString("en-IN") : ""}</time></div>
+              return <div className={`admin-chat-bubble-row ${sentByAdmin ? "outgoing" : "incoming"}`} key={message.id}>
+              <div className={`admin-chat-bubble${reviewMessage ? " review" : ""}`}><strong>{sentByAdmin ? "Admin" : (message.senderName || selectedInterest.name)}</strong><p>{message.text}</p><time>{message.sentAt ? new Date(message.sentAt).toLocaleString("en-IN") : ""}</time></div>
               </div>}) : <div className="admin-chat-empty">No messages yet. Start the conversation below.</div>}
           </div>
           {!selectedInterest.approvedAt && <div className="admin-chat-actions"><button type="button" className="admin-chat-approve" onClick={approve} disabled={approving}><Icon name="check" />{approving ? "Sending vehicle details..." : "Approve & send vehicle details"}</button></div>}
@@ -4525,6 +4600,7 @@ function CustomerPortal({ session, onLogout }) {
   const [section, setSection] = useState("dashboard");
   const [data, setData] = useState(loadData);
   const [loadError, setLoadError] = useState("");
+  const [openInterestListingId, setOpenInterestListingId] = useState(null);
   const visibleNavItems = useMemo(
     () => customerNavItems.filter(([key]) => canOpenSection(data, session.role, key)),
     [data, session.role]
@@ -4537,12 +4613,17 @@ function CustomerPortal({ session, onLogout }) {
     setLoadError("Permission denied for this section.");
   };
 
+  const openCustomerInterestChat = (listingId) => {
+    setOpenInterestListingId(String(listingId));
+    openPortalSection("chats");
+  };
+
   useEffect(() => {
     let active = true;
     const refreshFromDatabase = () => fetchBackendData(session.token)
       .then((backendData) => {
         if (!active) return;
-        setData(backendData);
+        setData((current) => JSON.stringify(current) === JSON.stringify(backendData) ? current : backendData);
         setLoadError("");
       })
       .catch((error) => {
@@ -4555,13 +4636,13 @@ function CustomerPortal({ session, onLogout }) {
         setLoadError(error.message || "Customer data could not be loaded from the server.");
       });
     refreshFromDatabase();
-    const intervalId = window.setInterval(refreshFromDatabase, 10000);
     const handleFocus = () => refreshFromDatabase();
     window.addEventListener("focus", handleFocus);
+    const stopRealtime = startRealtimeListener(API_BASE, session.token, refreshFromDatabase);
     return () => {
       active = false;
-      window.clearInterval(intervalId);
       window.removeEventListener("focus", handleFocus);
+      stopRealtime();
     };
   }, []);
 
@@ -4951,10 +5032,10 @@ function CustomerPortal({ session, onLogout }) {
           <CustomerDocuments documents={myDocuments} vehicles={myVehicles} setSection={openPortalSection} />
        )}
         {sectionAllowed && section === "marketplace" && (
-          <CustomerMarketplace chat={marketplaceChat} listings={marketplaceListings} interests={data.marketplaceInterests ?? []} vehicles={data.vehicles} saleClosings={data.saleClosings} myVehicleIds={new Set(myVehicles.map((vehicle) => vehicle.id))} deleteCustomerListing={deleteCustomerListing} submitMarketplaceInterest={submitMarketplaceInterest} setSection={openPortalSection} />
+          <CustomerMarketplace chat={marketplaceChat} listings={marketplaceListings} interests={data.marketplaceInterests ?? []} vehicles={data.vehicles} saleClosings={data.saleClosings} myVehicleIds={new Set(myVehicles.map((vehicle) => vehicle.id))} deleteCustomerListing={deleteCustomerListing} submitMarketplaceInterest={submitMarketplaceInterest} onOpenChat={openCustomerInterestChat} setSection={openPortalSection} />
         )}
         {sectionAllowed && section === "chats" && (
-          <CustomerInterestChats interests={data.marketplaceInterests ?? []} onSend={sendMarketplaceInterestMessage} />
+          <CustomerInterestChats interests={data.marketplaceInterests ?? []} initialListingId={openInterestListingId} onSend={sendMarketplaceInterestMessage} />
         )}
       </section>
     </main>
@@ -5486,7 +5567,7 @@ function CustomerMarketplaceInterestForm({ onSubmit, onCancel }) {
   </form>;
 }
 
-function CustomerMarketplace({ chat, listings, interests = [], vehicles, saleClosings = [], myVehicleIds, deleteCustomerListing, submitMarketplaceInterest, setSection }) {
+function CustomerMarketplace({ chat, listings, interests = [], vehicles, saleClosings = [], myVehicleIds, deleteCustomerListing, submitMarketplaceInterest, onOpenChat, setSection }) {
   const [selectedListing, setSelectedListing] = useState(null);
   const [interestListingId, setInterestListingId] = useState(null);
   const [marketplaceTab, setMarketplaceTab] = useState("browse");
@@ -5581,7 +5662,7 @@ function CustomerMarketplace({ chat, listings, interests = [], vehicles, saleClo
                 <div><dt>Address</dt><dd>{l.location || "-"}</dd></div>
                 <div><dt>Registration</dt><dd>{l.registrationNo || v?.regNo || "-"}</dd></div>
               </dl>}
-              <div className="actions"><button type="button" onClick={() => setSelectedListing(l)}><Icon name="eye" />View details</button>{!mine && (appliedInterestIds.has(l.id) ? <button className="customer-interest-trigger applied" type="button" disabled><Icon name="check" />Already applied</button> : interestListingId === l.id ? <CustomerMarketplaceInterestForm onCancel={() => setInterestListingId(null)} onSubmit={(details) => submitMarketplaceInterest?.(l.id, details)} /> : <button className="customer-interest-trigger" type="button" onClick={() => setInterestListingId(l.id)}><Icon name="send" />I am Interested</button>)}{mine && <button className="danger" type="button" onClick={() => deleteCustomerListing?.(l.id)}>Delete listing</button>}</div>
+              <div className="actions"><button type="button" onClick={() => setSelectedListing(l)}><Icon name="eye" />View details</button>{!mine && (appliedInterestIds.has(l.id) ? <div className="customer-interest-applied-actions"><button className="customer-interest-trigger applied" type="button" disabled><Icon name="check" />Already applied</button><button className="customer-interest-chat-open" type="button" onClick={() => onOpenChat?.(l.id)}>Open chat</button></div> : interestListingId === l.id ? <CustomerMarketplaceInterestForm onCancel={() => setInterestListingId(null)} onSubmit={(details) => submitMarketplaceInterest?.(l.id, details)} /> : <button className="customer-interest-trigger" type="button" onClick={() => setInterestListingId(l.id)}><Icon name="send" />I am Interested</button>)}{mine && <button className="danger" type="button" onClick={() => deleteCustomerListing?.(l.id)}>Delete listing</button>}</div>
             </article>
           );
         })}
@@ -5617,22 +5698,36 @@ function CustomerMarketplace({ chat, listings, interests = [], vehicles, saleClo
   );
 }
 
-function CustomerInterestChats({ interests = [], onSend }) {
+function CustomerInterestChats({ interests = [], initialListingId = null, onSend }) {
   const [drafts, setDrafts] = useState({});
   const [busyId, setBusyId] = useState("");
+  const [openInterestId, setOpenInterestId] = useState(null);
+  useEffect(() => {
+    if (!initialListingId) return;
+    const matchingInterest = interests.find((interest) => String(interest.listingId) === String(initialListingId));
+    if (matchingInterest) setOpenInterestId(matchingInterest.id);
+  }, [initialListingId, interests]);
+  useEffect(() => {
+    if (openInterestId && !interests.some((interest) => String(interest.id) === String(openInterestId))) setOpenInterestId(null);
+  }, [interests, openInterestId]);
   if (!interests.length) return <section className="settings-workload customer-interest-chats"><div className="settings-section-head"><div><h3>Admin interest chat</h3><p>Submit I am Interested on a listing to start a private chat with Admin.</p></div></div></section>;
   return <section className="settings-workload customer-interest-chats">
     <div className="settings-section-head"><div><h3>Admin interest chat</h3><p>Your form details and replies are visible only to you and Admin.</p></div><strong>{interests.length} request{interests.length === 1 ? "" : "s"}</strong></div>
     <div className="customer-interest-chat-list">
-      {interests.map((interest) => <article className="customer-interest-chat" key={interest.id}>
-        <div className="card-head"><div><strong>{interest.listingTitle || "Marketplace vehicle"}</strong><span>{interest.registration || interest.listingLocation || "Interest request"}</span></div><Badge label="Admin chat" /></div>
+      {interests.map((interest) => {
+        const expanded = openInterestId === interest.id;
+        return <article className={`customer-interest-chat ${expanded ? "expanded" : "collapsed"}`} key={interest.id}>
+        <button type="button" className="customer-interest-chat-head" aria-expanded={expanded} onClick={() => setOpenInterestId((current) => current === interest.id ? null : interest.id)}>
+          <span className="customer-interest-chat-title"><strong>{interest.listingTitle || "Marketplace vehicle"}</strong><small>{interest.registration || interest.listingLocation || "Interest request"}</small></span>
+          <span className="customer-interest-chat-toggle"><Badge label="Admin chat" /><Icon name={expanded ? "close" : "chevron-down"} /></span>
+        </button>
+        {expanded && <>
         <div className="customer-interest-chat-history">
           {(interest.messages ?? []).map((message, index) => {
-            const isAdmin = String(message.senderRole || "").toLowerCase().includes("admin");
-            const kind = message.kind === "interest-request" || message.kind === "vehicle-details" || message.kind === "chat"
-              ? message.kind
-              : index === 0 ? "interest-request" : /^ADMIN APPROVED VEHICLE DETAILS\b/i.test(String(message.text || "").trim()) ? "vehicle-details" : "chat";
-            return <div className={`customer-interest-message ${kind === "chat" ? (isAdmin ? "admin" : "customer") : "review"}`} key={message.id}>
+            const isAdmin = String(message.senderRole || "").toLowerCase().includes("admin") || String(message.senderName || "").toLowerCase() === "admin";
+            // In the customer app Admin is the receiver (left), while the
+            // customer's own replies are the outgoing green bubbles (right).
+            return <div className={`customer-interest-message ${isAdmin ? "customer" : "admin"}`} key={message.id}>
               <strong>{message.senderName || (isAdmin ? "Admin" : interest.name)}</strong>
               <span>{message.text}</span>
               <small>{message.sentAt ? new Date(message.sentAt).toLocaleString("en-IN") : ""}</small>
@@ -5653,7 +5748,9 @@ function CustomerInterestChats({ interests = [], onSend }) {
           <input value={drafts[interest.id] || ""} onChange={(event) => setDrafts((current) => ({ ...current, [interest.id]: event.target.value }))} placeholder="Reply to Admin" aria-label="Reply to Admin" />
           <button type="submit" disabled={busyId === interest.id}>{busyId === interest.id ? "Sending..." : "Send"}</button>
         </form>
-      </article>)}
+        </>}
+      </article>;
+      })}
     </div>
   </section>;
 }

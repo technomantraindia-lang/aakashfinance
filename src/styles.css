@@ -2213,6 +2213,10 @@ button:disabled {
   grid-template-columns: 320px minmax(0, 1fr);
 }
 
+.clients-layout-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .client-create-card,
 .clients-table-card {
   background: #0F2240;
@@ -2337,6 +2341,32 @@ button:disabled {
   padding: 16px 18px;
 }
 
+.clients-table-head-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.clients-add-button {
+  align-items: center;
+  background: #F5A623;
+  border: 1px solid #F5A623;
+  border-radius: 8px;
+  color: #091A31;
+  display: inline-flex;
+  font-weight: 950;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 12px;
+}
+
+.clients-add-button:hover {
+  background: #ffc04d;
+  transform: translateY(-1px);
+}
+
 .clients-directory-toolbar {
   align-items: end;
   background: #0C1E38;
@@ -2424,6 +2454,157 @@ button:disabled {
 
 .clients-table-scroll {
   overflow-x: auto;
+}
+
+.clients-pagination {
+  align-items: center;
+  background: #0C1E38;
+  border-top: 1px solid #2A476F;
+  color: #9DB7D7;
+  display: flex;
+  font-size: 12px;
+  font-weight: 850;
+  justify-content: space-between;
+  padding: 12px 16px;
+}
+
+.clients-pagination > div {
+  display: flex;
+  gap: 7px;
+}
+
+.clients-pagination button {
+  background: #1D3A66;
+  border: 1px solid #3A6796;
+  border-radius: 7px;
+  color: #F2F7FC;
+  font-size: 11px;
+  font-weight: 900;
+  padding: 7px 10px;
+}
+
+.clients-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: .4;
+}
+
+.client-modal-backdrop {
+  align-items: center;
+  background: rgba(2, 10, 22, .72);
+  backdrop-filter: blur(4px);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 20px;
+  position: fixed;
+  z-index: 100;
+}
+
+.client-modal {
+  background: linear-gradient(#0F2240, #0F2240) padding-box, linear-gradient(135deg, #F5A623, #3A6796 48%, #34D399) border-box;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  box-shadow: 0 28px 80px rgba(2, 10, 22, .62), 0 0 0 1px rgba(245, 166, 35, .12), 0 0 34px rgba(58, 103, 150, .18);
+  max-width: 480px;
+  overflow: hidden;
+  padding: 18px;
+  position: relative;
+  width: 100%;
+}
+
+.client-modal::before {
+  background: linear-gradient(90deg, #F5A623, #34D399, #5CA5EE);
+  border-radius: 999px;
+  content: "";
+  height: 3px;
+  left: 20px;
+  position: absolute;
+  right: 20px;
+  top: 0;
+}
+
+.client-modal-head,
+.client-modal-head > div:first-child,
+.client-modal-actions {
+  align-items: center;
+  display: flex;
+}
+
+.client-modal-head,
+.client-modal-actions {
+  justify-content: space-between;
+}
+
+.client-modal-head {
+  border-bottom: 1px solid #2A476F;
+  gap: 14px;
+  padding-bottom: 14px;
+}
+
+.client-modal-head > div:first-child {
+  gap: 10px;
+}
+
+.client-modal-head .client-head-icon {
+  background: linear-gradient(145deg, #24466C, #102744);
+  border: 1px solid #F5A623;
+  color: #F5A623;
+  box-shadow: 0 8px 18px rgba(245, 166, 35, .14);
+}
+
+.client-modal-head h2 {
+  color: #F0A500;
+  font-size: 20px;
+  margin: 0;
+}
+
+.client-modal-head span:not(.client-head-icon) {
+  color: #9DB7D7;
+  display: block;
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.client-modal .client-form {
+  margin-top: 16px;
+}
+
+.client-modal-actions {
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
+.client-modal-actions .secondary-button {
+  background: #0C1E38;
+  border: 1px solid #3A6796;
+  color: #DCEBFF;
+}
+
+.client-modal .icon-button {
+  background: #102744;
+  border: 1px solid #F5A623;
+  color: #F5A623;
+}
+
+.client-modal .icon-button:hover {
+  background: #F5A623;
+  color: #091A31;
+}
+
+.client-modal-actions > button {
+  align-items: center;
+  display: inline-flex;
+  flex: 1;
+  justify-content: center;
+  min-height: 46px;
+  white-space: nowrap;
+}
+
+.client-modal-actions > button[type="submit"] {
+  background: linear-gradient(135deg, #F5A623, #F08C00);
+  border: 1px solid #FFC04D;
+  color: #091A31;
 }
 
 .clients-table {
@@ -10391,7 +10572,6 @@ textarea {
 
 .admin-chat-bubble-row.incoming { justify-content: flex-start; }
 .admin-chat-bubble-row.outgoing { justify-content: flex-end; }
-.admin-chat-bubble-row.review { justify-content: flex-start; }
 
 .admin-chat-bubble {
   border: 1px solid rgba(112, 178, 239, .2);
@@ -10411,10 +10591,17 @@ textarea {
   border-top-right-radius: 4px;
 }
 
-.admin-chat-bubble-row.review .admin-chat-bubble {
+.admin-chat-bubble-row.incoming .admin-chat-bubble.review {
   background: #102744;
   border-color: rgba(112, 178, 239, .28);
   border-top-left-radius: 4px;
+}
+
+.admin-chat-bubble-row.outgoing .admin-chat-bubble.review {
+  background: linear-gradient(145deg, rgba(24, 115, 95, .9), rgba(13, 73, 70, .98));
+  border-color: rgba(61, 209, 167, .45);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 4px;
 }
 
 .admin-chat-bubble strong {
@@ -10576,6 +10763,67 @@ textarea {
   padding: 11px;
 }
 
+.customer-interest-chat-head {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 2px;
+  text-align: left;
+  width: 100%;
+}
+
+.customer-interest-chat-head:hover,
+.customer-interest-chat-head:focus-visible {
+  color: #f5a623;
+}
+
+.customer-interest-chat-title,
+.customer-interest-chat-toggle {
+  align-items: center;
+  display: flex;
+  min-width: 0;
+}
+
+.customer-interest-chat-title {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.customer-interest-chat-title strong,
+.customer-interest-chat-title small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.customer-interest-chat-title strong {
+  color: #f7faff;
+  font-size: 13px;
+}
+
+.customer-interest-chat-title small {
+  color: #9db6d2;
+  font-size: 10px;
+}
+
+.customer-interest-chat-toggle {
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.customer-interest-chat-toggle .icon {
+  color: #f5a623;
+  height: 16px;
+  width: 16px;
+}
+
 .customer-interest-trigger {
   background: #f5a623;
   color: #091a31;
@@ -10586,6 +10834,18 @@ textarea {
   background: #24466c;
   color: #b8cbe0;
   cursor: default;
+}
+
+.customer-interest-applied-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.customer-interest-chat-open {
+  background: #f5a623;
+  color: #091a31;
 }
 
 .customer-interest-form {
@@ -11164,12 +11424,12 @@ textarea {
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.09), 0 8px 18px rgba(2,10,22,0.28);
   color: #4f86c8;
   display: inline-flex;
-  flex: 0 0 46px;
-  height: 46px;
+  flex: 0 0 52px;
+  height: 52px;
   justify-content: center;
   overflow: hidden;
   position: relative;
-  width: 46px;
+  width: 52px;
 }
 
 .brand-mark::before,
@@ -11179,9 +11439,11 @@ textarea {
 
 .kuber-brand-svg {
   display: block;
-  height: 32px;
+  height: 44px;
   margin: 0 auto;
-  width: 32px;
+  object-fit: contain;
+  border-radius: 10px;
+  width: 44px;
 }
 
 .brand > div {
@@ -11210,9 +11472,9 @@ textarea {
 
 .customer-sidebar .brand-mark {
   color: #4f86c8;
-  flex: 0 0 46px;
-  height: 46px;
-  width: 46px;
+  flex: 0 0 52px;
+  height: 52px;
+  width: 52px;
 }
 
 .customer-sidebar .brand strong {
