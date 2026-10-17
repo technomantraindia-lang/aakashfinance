@@ -31,7 +31,10 @@ function requestBackend(method, path, headers, body) {
       hostname: "erp.aakashfinance.com",
       port: 443,
       servername: "erp.aakashfinance.com",
-      family: 4,
+      // Hostinger's DNS edge intermittently challenges cloud-origin requests.
+      // Connect to the stable IPv4 origin while retaining the real hostname
+      // for TLS SNI and the HTTP Host header.
+      lookup: (_hostname, _options, callback) => callback(null, "91.108.106.158", 4),
       method,
       path,
       headers
