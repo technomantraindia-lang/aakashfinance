@@ -2,9 +2,16 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 const apiProxy = {
-  target: "https://erp.aakashfinance.com",
+  target: "https://app-webappication.vercel.app",
   changeOrigin: true,
-  secure: true
+  secure: true,
+  configure(proxy) {
+    proxy.on("proxyReq", (proxyRequest) => {
+      proxyRequest.removeHeader("origin");
+      proxyRequest.removeHeader("referer");
+      proxyRequest.setHeader("user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0.0.0 Safari/537.36");
+    });
+  }
 };
 
 export default defineConfig({
