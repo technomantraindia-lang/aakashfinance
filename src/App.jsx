@@ -306,7 +306,8 @@ const navItems = [
   ["dues", "Smart Alert", "calendar"],
   ["marketplace", "Marketplace", "store"],
   ["chat-requests", "Chat requests", "people"],
-  ["settings", "Admin profile", "settings"]
+  ["rules", "Rules", "settings"],
+  ["settings", "Admin profile", "person"]
 ];
 
 const rolePermissionIndex = { Admin: 1, Owner: 2, Caller: 3, Buyer: 4, Customer: 4 };
@@ -345,7 +346,17 @@ function emptyAppData() {
     whatsappLogs: [],
     users: [],
     rolePermissions: permissionRows,
-    reminderSettings: { enabled: true, intervalHours: 24, windowDays: 30 }
+    reminderSettings: {
+      enabled: true,
+      intervalHours: 24,
+      windowDays: 30,
+      emiWindowDays: 7,
+      pucWindowDays: 30,
+      insuranceWindowDays: 30,
+      fitnessWindowDays: 30,
+      permitWindowDays: 30,
+      nationalPermitWindowDays: 30
+    }
   };
 }
 
@@ -422,7 +433,7 @@ async function fetchBackendData(token) {
     }
   };
 
-  const [rawClients, rawVehicles, rawDues, rawListings, rawCaller, rawAudit, rawImports, rawClientImports, rawDocuments, rawVerificationItems, rawSaleClosings, rawMarketplaceThreads, rawUsers, rawSettings, rawWhatsAppTemplates, rawWhatsAppLogs, rawMarketplaceInterests] = await Promise.all([
+  const [rawClients, rawVehicles, rawDues, rawListings, rawCaller, rawAudit, rawImports, rawClientImports, rawDocuments, rawVerificationItems, rawSaleClosings, rawMarketplaceThreads, rawUsers, rawSettings, rawReminderSettings, rawWhatsAppTemplates, rawWhatsAppLogs, rawMarketplaceInterests] = await Promise.all([
     fetchJson("/clients"),
     fetchJson("/vehicles"),
     fetchJson("/dues"),
@@ -437,11 +448,13 @@ async function fetchBackendData(token) {
     fetchJson("/marketplace-threads", false),
     fetchJson("/users", false),
     fetchJson("/settings", false),
+    fetchJson("/reminder-settings/public", false),
     fetchJson("/whatsapp-templates", false),
     fetchJson("/whatsapp-logs", false),
     fetchJson("/marketplace-interests", false)
   ]);
 
+  const reminderConfig = rawSettings?.reminderSettings ?? (rawReminderSettings && !Array.isArray(rawReminderSettings) ? rawReminderSettings : {});
   const loadedData = {
     ...emptyAppData(),
     clients: Array.isArray(rawClients) ? rawClients.map((row) => ({
@@ -651,9 +664,15 @@ async function fetchBackendData(token) {
     })) : [],
     rolePermissions: Array.isArray(rawSettings?.rolePermissions) ? rawSettings.rolePermissions : permissionRows,
     reminderSettings: {
-      enabled: rawSettings?.reminderSettings?.enabled !== false,
-      intervalHours: Number(rawSettings?.reminderSettings?.intervalHours ?? 24),
-      windowDays: Number(rawSettings?.reminderSettings?.windowDays ?? 30)
+      enabled: reminderConfig?.enabled !== false,
+      intervalHours: Number(reminderConfig?.intervalHours ?? 24),
+      windowDays: Number(reminderConfig?.windowDays ?? 30),
+      emiWindowDays: Number(reminderConfig?.emiWindowDays ?? 7),
+      pucWindowDays: Number(reminderConfig?.pucWindowDays ?? 30),
+      insuranceWindowDays: Number(reminderConfig?.insuranceWindowDays ?? 30),
+      fitnessWindowDays: Number(reminderConfig?.fitnessWindowDays ?? 30),
+      permitWindowDays: Number(reminderConfig?.permitWindowDays ?? 30),
+      nationalPermitWindowDays: Number(reminderConfig?.nationalPermitWindowDays ?? 30)
     }
   };
   return deduplicateFinanceRecords(materializeImportedTrailerVehicles(loadedData));
@@ -719,6 +738,28 @@ function canonicalVehicleRows(records, clientId = "") {
   });
 
   return result;
+}
+
+function clientVehicleDisplayRows(records, clientId = "") {
+  const canonical = canonicalVehicleRows(records, clientId);
+
+  // Imported body/trailer rows are materialized as Trailer vehicles for fleet
+  // features, but the client table already renders that data as a child row of
+  // its matching truck. Keep the truck row and avoid showing the same vehicle
+  // twice when both records share a registration number.
+  return canonical.filter((vehicle) => {
+    const type = String(vehicle?.type ?? "Truck").trim().toLowerCase();
+    if (type !== "trailer") return true;
+
+    const registration = normalizeRegNo(baseRegNo(vehicle?.regNo));
+    if (!registration) return true;
+
+    return !canonical.some((candidate) => (
+      candidate !== vehicle
+      && String(candidate?.type ?? "Truck").trim().toLowerCase() !== "trailer"
+      && normalizeRegNo(baseRegNo(candidate?.regNo)) === registration
+    ));
+  });
 }
 
 function dueTaskDateKey(value) {
@@ -1058,6 +1099,12 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
   const mutationVersionRef = useRef(0);
   const pendingMutationCountRef = useRef(0);
   const mutationQueueRef = useRef(Promise.resolve());
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timerId = window.setTimeout(() => setToast(""), 3500);
+    return () => window.clearTimeout(timerId);
+  }, [toast]);
+
   const enqueueMutation = (operation) => {
     const request = mutationQueueRef.current.then(operation);
     mutationQueueRef.current = request.catch(() => {});
@@ -1082,7 +1129,7 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
     const emiOverdue = data.dueTasks.filter((task) => task.type === "EMI" && ["Overdue", "Escalated"].includes(task.status));
     const today = new Date();
     const inThirtyDays = new Date(today);
-    inThirtyDays.setDate(today.getDate() + 30);
+    inThirtyDays.setDate(today.getDate() + reminderDaysForType(data.reminderSettings, "Insurance"));
     const insuranceExpiring = data.vehicles.filter((vehicle) => {
       if (!vehicle.insuranceExpiry) return false;
       const expiry = new Date(vehicle.insuranceExpiry);
@@ -2323,11 +2370,25 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
 
   const saveReminderSettings = async (event) => {
     event.preventDefault();
+    if (!window.confirm("Save Alert Rules? These changes will apply to the customer app, customer web portal and Admin Smart Alerts.")) return;
     const form = new FormData(event.currentTarget);
     const reminderSettings = {
       enabled: form.get("reminderEnabled") === "on",
       intervalHours: Number(form.get("reminderIntervalHours")) || 24,
-      windowDays: Number(form.get("reminderWindowDays")) || 30
+      windowDays: Math.max(
+        Number(form.get("emiWindowDays")) || 7,
+        Number(form.get("pucWindowDays")) || 30,
+        Number(form.get("insuranceWindowDays")) || 30,
+        Number(form.get("fitnessWindowDays")) || 30,
+        Number(form.get("permitWindowDays")) || 30,
+        Number(form.get("nationalPermitWindowDays")) || 30
+      ),
+      emiWindowDays: Number(form.get("emiWindowDays")) || 7,
+      pucWindowDays: Number(form.get("pucWindowDays")) || 30,
+      insuranceWindowDays: Number(form.get("insuranceWindowDays")) || 30,
+      fitnessWindowDays: Number(form.get("fitnessWindowDays")) || 30,
+      permitWindowDays: Number(form.get("permitWindowDays")) || 30,
+      nationalPermitWindowDays: Number(form.get("nationalPermitWindowDays")) || 30
     };
     setSaveStatus("Saving");
     try {
@@ -2538,7 +2599,8 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
         {section === "marketplace" && <Marketplace data={data} interests={data.marketplaceInterests ?? []} approveInterest={approveMarketplaceInterest} updateListingStatus={updateListingStatus} saveSaleClosing={saveSaleClosing} markAdminListingSold={markAdminListingSold} deleteMarketplaceListing={deleteMarketplaceListing} openFleet={() => openSection("fleet")} />}
         {section === "chat-requests" && <AdminInterestChatsPage interests={data.marketplaceInterests ?? []} onApprove={approveMarketplaceInterest} onSend={sendAdminMarketplaceInterestMessage} apiBase={API_BASE} token={session.token} />}
         {section === "import" && <ImportRows data={data} importValidRows={importValidRows} lastSavedAt={lastSavedAt} />}
-        {section === "settings" && <Settings data={data} session={session} saveAdminProfile={saveAdminProfile} changeAdminPassword={changeAdminPassword} saveCommonPassword={saveCommonPassword} saveRolePermissions={saveRolePermissions} />}
+        {section === "rules" && <RulesSettings data={data} saveCommonPassword={saveCommonPassword} saveReminderSettings={saveReminderSettings} />}
+        {section === "settings" && <Settings data={data} session={session} saveAdminProfile={saveAdminProfile} changeAdminPassword={changeAdminPassword} saveRolePermissions={saveRolePermissions} />}
       </section>
     </main>
   );
@@ -2547,42 +2609,31 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
 function Dashboard({ data, totals, setSection }) {
   return (
     <section className="dashboard-page">
+      <div className="dashboard-intro">
+        <div>
+          <span className="dashboard-intro-kicker">OPERATIONS OVERVIEW</span>
+          <strong>Keep customer and fleet work moving from one place.</strong>
+        </div>
+        <span className="dashboard-live-status"><i />Live workspace</span>
+      </div>
       <section className="metrics dashboard-metrics">
         <Metric label="Clients" value={data.clients.length} icon="people" onClick={() => setSection("clients")} />
         <Metric label="Trucks" value={totals.trucks.length} icon="truck" onClick={() => setSection("fleet")} />
-        <Metric label="Trailers" value={totals.trailers.length} icon="truck" onClick={() => setSection("fleet")} />
-        <Metric label="Financed Assets" value={totals.financedAssets.length} icon="chart" onClick={() => setSection("fleet")} />
-        <Metric label="Closing Principal" value={formatMoney(totals.totalLiability)} icon="chart" onClick={() => setSection("fleet")} />
-        <Metric label="EMI Due" value={totals.emiDue.length} icon="calendar" onClick={() => setSection("dues")} />
-        <Metric label="EMI Overdue" value={totals.emiOverdue.length} icon="calendar" onClick={() => setSection("dues")} />
-        <Metric label="Insurance Expiring" value={totals.insuranceExpiring.length} icon="calendar" onClick={() => setSection("dues")} />
-        <Metric label="Sale Listings" value={totals.activeListings.length} icon="store" onClick={() => setSection("marketplace")} />
+        <Metric label="Listings" value={data.listings.length} icon="store" onClick={() => setSection("marketplace")} />
         <Metric label="Vehicles Sold" value={totals.soldVehicles.length} icon="store" onClick={() => setSection("marketplace")} />
       </section>
       <section className="quick-strip dashboard-actions">
         {[
-          ["Add client", "clients", "people"],
-          ["Marketplace", "marketplace", "store"]
-        ].map(([label, target, icon]) => (
-          <button key={target} onClick={() => setSection(target)}>
-            <Icon name={icon} />
-            {label}
+          ["Add Client", "Create a customer account", "clients", "plus"],
+          ["Smart Alert", "Review upcoming expiry alerts", "dues", "calendar"],
+          ["Reminder Settings", "Change alert timing rules", "rules", "settings"]
+        ].map(([label, description, target, icon]) => (
+          <button className={`dashboard-action-card ${target === "clients" ? "primary" : ""}`} key={target} onClick={() => setSection(target)}>
+            <span className="dashboard-action-icon"><Icon name={icon} /></span>
+            <span className="dashboard-action-copy"><strong>{label}</strong><small>{description}</small></span>
+            <span className="dashboard-action-arrow"><Icon name="chevron-right" /></span>
           </button>
         ))}
-      </section>
-      <section className="split dashboard-split">
-        <Panel title="Priority Work">
-          {totals.overdue.map((task) => <DueCard key={task.id} task={task} data={data} compact />)}
-          {totals.overdue.length === 0 && <Empty text="No overdue or escalated work." />}
-        </Panel>
-        <Panel title="Notifications">
-          {data.notifications.map((item) => (
-            <article className="notice" key={item.id}>
-              <strong>{item.title}</strong>
-              <span>{item.detail}</span>
-            </article>
-          ))}
-        </Panel>
       </section>
     </section>
   );
@@ -2773,7 +2824,9 @@ function ClientProfile({ data, clientId, validationRows = [], backToClients, imp
 
   const clientVehicles = canonicalVehicleRows(data.vehicles, client.id);
   // Manual entries are real vehicles even when their registration text contains "body".
-  const visibleVehicles = clientVehicles;
+  // Only hide a materialized trailer when its truck is already displayed; the
+  // imported body row is rendered underneath that truck in the finance table.
+  const visibleVehicles = clientVehicleDisplayRows(clientVehicles);
   const clientDues = data.dueTasks.filter((task) => task.clientId === client.id);
   // Keep old EMI rows in the database for history, but show only the latest
   // open due for each vehicle/type in the client profile.
@@ -3232,7 +3285,7 @@ function Dues({ data, openClientProfile }) {
         <div className="smart-alert-head">
           <div className="smart-alert-title">
             <div className="smart-alert-head-icon"><AlertSvg name="calendar" /></div>
-            <div><span className="smart-alert-kicker">Priority compliance watch</span><h2>Next 10 days expiry alerts</h2></div>
+            <div><span className="smart-alert-kicker">Priority compliance watch</span><h2>Configured expiry alerts</h2></div>
           </div>
           <span className="smart-alert-count">{visibleSmartAlerts.length} alerts</span>
         </div>
@@ -3362,7 +3415,8 @@ function VehicleFinanceTable({ vehicles, importedAssets, sourceImportedAssets = 
   const [selectedRow, setSelectedRow] = useState(null);
   const [vehicleSearch, setVehicleSearch] = useState("");
   const searchTerm = vehicleSearch.trim().toLowerCase();
-  const tableRows = vehicles.flatMap((vehicle, index) => {
+  const displayVehicles = clientVehicleDisplayRows(vehicles);
+  const tableRows = displayVehicles.flatMap((vehicle, index) => {
     const matchingAssets = importedAssets.filter((asset) => !isBodyRow(asset) && normalizeRegNo(baseRegNo(asset.regNo)) === normalizeRegNo(baseRegNo(vehicle.regNo)));
     const excelAsset = matchingAssets.find((asset) => asset.pdfImportedAt || asset.bankClosingPrincipal) ?? matchingAssets[0];
     const bodyAsset = importedAssets.find((asset) => isBodyRow(asset) && normalizeRegNo(baseRegNo(asset.regNo)) === normalizeRegNo(baseRegNo(vehicle.regNo)));
@@ -4104,9 +4158,13 @@ function AdminInterestChatsPage({ interests = [], onApprove, onSend, apiBase, to
           <div className="admin-chat-context"><span>{selectedInterest.phone || "No phone"}</span><span>{selectedInterest.email || "No email"}</span><span>{selectedInterest.address || "No address"}</span></div>
           <div className="admin-chat-messages">
             <div className="admin-chat-day">Marketplace interest</div>
-            {messages.length ? messages.map((message) => {
+            {messages.length ? messages.map((message, index) => {
               const sentByAdmin = String(message.senderRole || "").toLowerCase().includes("admin") || String(message.senderName || "").toLowerCase() === "admin";
-              return <div className={`admin-chat-bubble-row ${sentByAdmin ? "outgoing" : "incoming"}`} key={message.id}>
+              const kind = message.kind === "interest-request" || message.kind === "vehicle-details" || message.kind === "chat"
+                ? message.kind
+                : index === 0 ? "interest-request" : /^ADMIN APPROVED VEHICLE DETAILS\b/i.test(String(message.text || "").trim()) ? "vehicle-details" : "chat";
+              const reviewMessage = kind !== "chat";
+              return <div className={`admin-chat-bubble-row ${reviewMessage ? "review" : sentByAdmin ? "outgoing" : "incoming"}`} key={message.id}>
               <div className="admin-chat-bubble"><strong>{sentByAdmin ? "Admin" : (message.senderName || selectedInterest.name)}</strong><p>{message.text}</p><time>{message.sentAt ? new Date(message.sentAt).toLocaleString("en-IN") : ""}</time></div>
               </div>}) : <div className="admin-chat-empty">No messages yet. Start the conversation below.</div>}
           </div>
@@ -4231,7 +4289,48 @@ function ImportRows({ data, importValidRows, lastSavedAt }) {
   );
 }
 
-function Settings({ data, session, saveAdminProfile, changeAdminPassword, saveCommonPassword, saveRolePermissions }) {
+function RulesSettings({ data, saveCommonPassword, saveReminderSettings }) {
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  return (
+    <section className="settings-page rules-page">
+      <section className="admin-profile-hero" style={{ backgroundImage: `url(${loginBackground})` }}>
+        <div className="admin-profile-breadcrumb"><Icon name="home" /><span>Home</span><Icon name="chevron-right" /><strong>Reminder Settings</strong></div>
+        <div className="admin-profile-hero-row"><div><h1><span>Admin</span> Reminder Settings</h1><p>Set when customers receive EMI and document expiry alerts.</p></div><div className="admin-profile-db-pill"><Icon name="settings" />Reminder Settings</div></div>
+      </section>
+
+      <details className="settings-card rules-accordion" open={passwordOpen} onToggle={(event) => setPasswordOpen(event.currentTarget.open)}>
+        <summary className="compact-card-head"><span className="settings-card-icon"><Icon name="lock" /></span><div><h3>Change Customer Password</h3><p>Shared password for customer sign-ins.</p></div><Icon name="chevron-down" /></summary>
+        <form className="settings-form rules-inner-form" onSubmit={saveCommonPassword}>
+          <label><span>Common Password</span><span className="settings-input-wrap"><Icon name="lock" /><input name="commonPassword" type={showPassword ? "text" : "password"} placeholder="Set customer password" minLength={4} required autoComplete="new-password" /><button className="password-visibility-button" type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide customer password" : "Show customer password"}><Icon name="eye" /></button></span></label>
+          <p className="settings-form-hint"><Icon name="check" />Minimum 4 characters · Applies to customer sign-ins</p>
+          <button type="submit"><Icon name="lock" />Save Customer Password</button>
+        </form>
+      </details>
+
+      <section className="settings-card rules-accordion rules-always-open">
+        <div className="compact-card-head"><span className="settings-card-icon"><Icon name="calendar" /></span><div><h3>Alert Rules</h3><p>Choose how many days before each EMI or document expiry alerts should appear.</p></div></div>
+        <form className="settings-form rules-inner-form" onSubmit={saveReminderSettings}>
+          <div className="settings-form-grid">
+            <label><span>EMI alert window (days)</span><span className="settings-input-wrap"><Icon name="calendar" /><input name="emiWindowDays" type="number" min="1" max="180" defaultValue={data.reminderSettings?.emiWindowDays ?? 7} required /></span></label>
+            <label><span>PUC alert window (days)</span><span className="settings-input-wrap"><Icon name="calendar" /><input name="pucWindowDays" type="number" min="1" max="180" defaultValue={data.reminderSettings?.pucWindowDays ?? 30} required /></span></label>
+            <label><span>Insurance alert window (days)</span><span className="settings-input-wrap"><Icon name="calendar" /><input name="insuranceWindowDays" type="number" min="1" max="180" defaultValue={data.reminderSettings?.insuranceWindowDays ?? 30} required /></span></label>
+            <label><span>Fitness alert window (days)</span><span className="settings-input-wrap"><Icon name="calendar" /><input name="fitnessWindowDays" type="number" min="1" max="180" defaultValue={data.reminderSettings?.fitnessWindowDays ?? 30} required /></span></label>
+            <label><span>Permit alert window (days)</span><span className="settings-input-wrap"><Icon name="calendar" /><input name="permitWindowDays" type="number" min="1" max="180" defaultValue={data.reminderSettings?.permitWindowDays ?? 30} required /></span></label>
+            <label><span>National Permit alert window (days)</span><span className="settings-input-wrap"><Icon name="calendar" /><input name="nationalPermitWindowDays" type="number" min="1" max="180" defaultValue={data.reminderSettings?.nationalPermitWindowDays ?? 30} required /></span></label>
+            <label><span>Scan frequency (hours)</span><span className="settings-input-wrap"><Icon name="settings" /><input name="reminderIntervalHours" type="number" min="1" max="168" defaultValue={data.reminderSettings?.intervalHours ?? 24} required /></span></label>
+            <label className="settings-checkbox alert-rules-enabled"><input name="reminderEnabled" type="checkbox" defaultChecked={data.reminderSettings?.enabled !== false} /><span>Enable automatic alerts</span></label>
+          </div>
+          <p className="settings-form-hint"><Icon name="info" />These values apply to the customer app, customer web portal and Admin Smart Alerts.</p>
+          <button type="submit"><Icon name="check" />Save Alert Rules</button>
+        </form>
+      </section>
+    </section>
+  );
+}
+
+function Settings({ data, session, saveAdminProfile, changeAdminPassword, saveRolePermissions }) {
   const editablePermissionRows = Array.isArray(data.rolePermissions) ? data.rolePermissions : permissionRows;
   const accessRows = editablePermissionRows.map(([feature, admin, owner, caller, buyer]) => ({
     feature,
@@ -4252,6 +4351,7 @@ function Settings({ data, session, saveAdminProfile, changeAdminPassword, saveCo
   const [showCommonPassword, setShowCommonPassword] = useState(false);
   const [visibleAdminPasswords, setVisibleAdminPasswords] = useState({ current: false, next: false, confirm: false });
   const [profileEditing, setProfileEditing] = useState(false);
+  const [customerAccessOpen, setCustomerAccessOpen] = useState(false);
   const toggleAdminPassword = (field) => setVisibleAdminPasswords((current) => ({ ...current, [field]: !current[field] }));
 
   return (
@@ -4276,7 +4376,6 @@ function Settings({ data, session, saveAdminProfile, changeAdminPassword, saveCo
               <div className="admin-profile-overview-copy">
                 <h3>{adminProfile.name || "Admin"}</h3>
                 <p>{adminProfile.email || "Email not added"}</p>
-                <div className="admin-profile-meta"><span><Icon name="check" />Active</span><span>Full admin access</span></div>
               </div>
             </div>
             <div className="admin-profile-detail-grid">
@@ -4300,7 +4399,7 @@ function Settings({ data, session, saveAdminProfile, changeAdminPassword, saveCo
           </div>}
         </article>
 
-        <article className="settings-card settings-password-card">
+        {false && <article className="settings-card settings-password-card">
           <div className="compact-card-head"><span className="settings-card-icon"><Icon name="lock" /></span><div><h3>Customer Login Password</h3><p>Shared password for all customer accounts until they change it.</p></div></div>
           <div className="security-card-body">
           <form className="settings-form" onSubmit={saveCommonPassword}>
@@ -4310,10 +4409,10 @@ function Settings({ data, session, saveAdminProfile, changeAdminPassword, saveCo
           </form>
           <div className="security-illustration" aria-hidden="true"><div className="security-shield"><Icon name="lock" /></div><i /><i /><i /><i /></div>
           </div>
-        </article>
+        </article>}
 
-        <article className="settings-card settings-password-card admin-change-password-card">
-          <div className="compact-card-head"><span className="settings-card-icon"><Icon name="lock" /></span><div><h3>Change Admin Password</h3><p>Use your current password before creating a new one.</p></div><div className="security-mini-illustration" aria-hidden="true"><Icon name="lock" /></div></div>
+        <details className="settings-card settings-password-card admin-change-password-card rules-accordion">
+          <summary className="compact-card-head"><span className="settings-card-icon"><Icon name="lock" /></span><div><h3>Change Admin Password</h3><p>Use your current password before creating a new one.</p></div><Icon name="chevron-down" /></summary>
           <form className="settings-form change-password-form" onSubmit={changeAdminPassword}>
             <div className="settings-form-grid">
               <label><span>Current Password</span><span className="settings-input-wrap"><Icon name="lock" /><input name="currentPassword" type={visibleAdminPasswords.current ? "text" : "password"} placeholder="Enter current password" autoComplete="current-password" required /><button className="password-visibility-button" type="button" onClick={() => toggleAdminPassword("current")} aria-label={visibleAdminPasswords.current ? "Hide current password" : "Show current password"}><Icon name="eye" /></button></span></label>
@@ -4322,19 +4421,34 @@ function Settings({ data, session, saveAdminProfile, changeAdminPassword, saveCo
             </div>
             <button type="submit"><Icon name="settings" />Update Admin Password</button>
           </form>
-        </article>
+        </details>
 
       </section>
 
-      <form className="settings-access" onSubmit={saveRolePermissions}>
-        <div className="settings-section-head">
+      {false && <form className="settings-card alert-rules-card" onSubmit={saveReminderSettings}>
+        <div className="compact-card-head"><span className="settings-card-icon"><Icon name="calendar" /></span><div><h3>Alert Rules</h3><p>Choose how many days before each EMI or document expiry alerts should appear.</p></div></div>
+        <div className="settings-form-grid alert-rules-grid">
+          <label><span>EMI alert window (days)</span><span className="settings-input-wrap"><Icon name="calendar" /><input name="emiWindowDays" type="number" min="1" max="180" defaultValue={data.reminderSettings?.emiWindowDays ?? 7} required /></span></label>
+          <label><span>PUC alert window (days)</span><span className="settings-input-wrap"><Icon name="calendar" /><input name="pucWindowDays" type="number" min="1" max="180" defaultValue={data.reminderSettings?.pucWindowDays ?? 30} required /></span></label>
+          <label><span>Insurance alert window (days)</span><span className="settings-input-wrap"><Icon name="calendar" /><input name="insuranceWindowDays" type="number" min="1" max="180" defaultValue={data.reminderSettings?.insuranceWindowDays ?? 30} required /></span></label>
+          <label><span>Fitness alert window (days)</span><span className="settings-input-wrap"><Icon name="calendar" /><input name="fitnessWindowDays" type="number" min="1" max="180" defaultValue={data.reminderSettings?.fitnessWindowDays ?? 30} required /></span></label>
+          <label><span>Permit alert window (days)</span><span className="settings-input-wrap"><Icon name="calendar" /><input name="permitWindowDays" type="number" min="1" max="180" defaultValue={data.reminderSettings?.permitWindowDays ?? 30} required /></span></label>
+          <label><span>National Permit alert window (days)</span><span className="settings-input-wrap"><Icon name="calendar" /><input name="nationalPermitWindowDays" type="number" min="1" max="180" defaultValue={data.reminderSettings?.nationalPermitWindowDays ?? 30} required /></span></label>
+          <label><span>Scan frequency (hours)</span><span className="settings-input-wrap"><Icon name="settings" /><input name="reminderIntervalHours" type="number" min="1" max="168" defaultValue={data.reminderSettings?.intervalHours ?? 24} required /></span></label>
+          <label className="settings-checkbox alert-rules-enabled"><input name="reminderEnabled" type="checkbox" defaultChecked={data.reminderSettings?.enabled !== false} /><span>Enable automatic alerts</span></label>
+        </div>
+        <p className="settings-form-hint"><Icon name="info" />These values are shared by the customer app, customer web portal and Admin Smart Alerts.</p>
+        <button type="submit"><Icon name="check" />Save Alert Rules</button>
+      </form>}
+
+      <details className="settings-access settings-access-accordion" open={customerAccessOpen} onToggle={(event) => setCustomerAccessOpen(event.currentTarget.open)}>
+        <summary className="settings-section-head">
           <div className="compact-card-head"><span className="settings-card-icon"><Icon name="settings" /></span><div><h3>Customer App Access</h3><p>Control which areas customers can open.</p></div></div>
           <div className="settings-access-summary" aria-label="Customer access summary"><span>4 sections</span><small>Customer app</small></div>
-          <div className="settings-section-actions">
-            <button type="submit"><Icon name="check" />Save Customer Permissions</button>
-          </div>
-        </div>
-        <div className="role-card-grid">
+          <Icon name="chevron-down" />
+        </summary>
+        <form className="settings-access-form" onSubmit={saveRolePermissions}>
+          <div className="role-card-grid">
           <article className="role-card">
               <div className="role-card-top"><Icon name="people" /><strong>Customer</strong><span>{customerFeatures.length} features</span></div>
               <div className="permission-control-list">
@@ -4358,8 +4472,12 @@ function Settings({ data, session, saveAdminProfile, changeAdminPassword, saveCo
                 })}
               </div>
           </article>
-        </div>
-      </form>
+          </div>
+          <div className="settings-section-actions settings-access-form-actions">
+            <button type="submit"><Icon name="check" />Save Customer Permissions</button>
+          </div>
+        </form>
+      </details>
     </section>
   );
 }
@@ -4523,7 +4641,7 @@ function CustomerPortal({ session, onLogout }) {
   );
 
   const openDues = myDues.filter(isCustomerActiveTask);
-  const attentionDues = openDues.filter((task) => task.type === "EMI" && isDateWithinNextDays(task.dueDate, 7));
+  const attentionDues = openDues.filter((task) => task.type === "EMI" && isDateWithinNextDays(task.dueDate, reminderDaysForType(data.reminderSettings, "EMI")));
   const sectionAllowed = section === "dashboard" || canOpenSection(data, session.role, section);
   const myDocuments = useMemo(
     () => (data.documents ?? []).filter((document) => myVehicles.some((vehicle) => vehicle.id === document.vehicleId)),
@@ -4827,7 +4945,7 @@ function CustomerPortal({ session, onLogout }) {
             <CustomerFleet vehicles={activeVehicles} linkedVehicles={activeVehiclePool} soldVehicles={soldVehicles} saleClosings={data.saleClosings} client={myClient} importedAssets={myImportedAssets} markVehicleSold={markCustomerVehicleSold} submitListing={submitCustomerListing} />
         )}
         {sectionAllowed && section === "dues" && (
-          <CustomerDues vehicles={activeVehiclePool} importedAssets={myImportedAssets} />
+          <CustomerDues vehicles={activeVehiclePool} importedAssets={myImportedAssets} reminderSettings={data.reminderSettings} />
         )}
        {sectionAllowed && section === "documents" && (
           <CustomerDocuments documents={myDocuments} vehicles={myVehicles} setSection={openPortalSection} />
@@ -5139,12 +5257,14 @@ async function readListingPhotos(files) {
   })));
 }
 
-function CustomerDues({ vehicles, importedAssets = [] }) {
+function CustomerDues({ vehicles, importedAssets = [], reminderSettings }) {
   const [activeAlertTab, setActiveAlertTab] = useState("PUC");
   const alertTabs = [
     { key: "PUC", label: "PUC", icon: "upload" },
     { key: "Fitness", label: "Fitness", icon: "check" },
     { key: "Permit", label: "Permit", icon: "calendar" },
+    { key: "National Permit", label: "National Permit", icon: "calendar" },
+    { key: "Insurance", label: "Insurance", icon: "check" },
     { key: "EMI", label: "EMI", icon: "calendar" }
   ];
   const selectedTab = alertTabs.find((tab) => tab.key === activeAlertTab) ?? alertTabs[0];
@@ -5161,6 +5281,10 @@ function CustomerDues({ vehicles, importedAssets = [] }) {
           ? vehicle.fitnessExpiry
           : activeAlertTab === "Permit"
             ? vehicle.permitExpiry
+          : activeAlertTab === "National Permit"
+            ? vehicle.nationalPermitExpiry
+            : activeAlertTab === "Insurance"
+              ? vehicle.insuranceExpiry
             : nextEmi?.dueDate || "";
       return {
         vehicle,
@@ -5169,9 +5293,7 @@ function CustomerDues({ vehicles, importedAssets = [] }) {
         amount: nextEmi?.amount || toNumber(source?.emiAmount)
       };
     })
-    .filter(({ expiry }) => expiry && (activeAlertTab === "EMI"
-      ? isDateWithinNextDays(expiry, 7)
-      : isExpiryWithinNextMonth(expiry)))
+    .filter(({ expiry }) => expiry && isDateWithinNextDays(expiry, reminderDaysForType(reminderSettings, activeAlertTab)))
     .sort((first, second) => (parseDisplayDate(first.expiry)?.getTime() || Number.MAX_SAFE_INTEGER) - (parseDisplayDate(second.expiry)?.getTime() || Number.MAX_SAFE_INTEGER));
 
   return (
@@ -5505,11 +5627,17 @@ function CustomerInterestChats({ interests = [], onSend }) {
       {interests.map((interest) => <article className="customer-interest-chat" key={interest.id}>
         <div className="card-head"><div><strong>{interest.listingTitle || "Marketplace vehicle"}</strong><span>{interest.registration || interest.listingLocation || "Interest request"}</span></div><Badge label="Admin chat" /></div>
         <div className="customer-interest-chat-history">
-          {(interest.messages ?? []).map((message) => <div className={`customer-interest-message ${message.senderRole === "Admin" ? "admin" : "customer"}`} key={message.id}>
-            <strong>{message.senderName || (message.senderRole === "Admin" ? "Admin" : interest.name)}</strong>
-            <span>{message.text}</span>
-            <small>{message.sentAt ? new Date(message.sentAt).toLocaleString("en-IN") : ""}</small>
-          </div>)}
+          {(interest.messages ?? []).map((message, index) => {
+            const isAdmin = String(message.senderRole || "").toLowerCase().includes("admin");
+            const kind = message.kind === "interest-request" || message.kind === "vehicle-details" || message.kind === "chat"
+              ? message.kind
+              : index === 0 ? "interest-request" : /^ADMIN APPROVED VEHICLE DETAILS\b/i.test(String(message.text || "").trim()) ? "vehicle-details" : "chat";
+            return <div className={`customer-interest-message ${kind === "chat" ? (isAdmin ? "admin" : "customer") : "review"}`} key={message.id}>
+              <strong>{message.senderName || (isAdmin ? "Admin" : interest.name)}</strong>
+              <span>{message.text}</span>
+              <small>{message.sentAt ? new Date(message.sentAt).toLocaleString("en-IN") : ""}</small>
+            </div>;
+          })}
         </div>
         <form className="customer-interest-reply" onSubmit={async (event) => {
           event.preventDefault();
@@ -5661,6 +5789,7 @@ function Badge({ label }) {
 
 const iconPaths = {
   home: <><path d="m3 11 9-8 9 8" /><path d="M5 10v10h14V10" /></>,
+  person: <><circle cx="12" cy="7" r="3.5" /><path d="M5 21a7 7 0 0 1 14 0" /></>,
   people: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>,
   truck: <><path d="M10 17h4V5H2v12h3" /><path d="M14 8h4l4 4v5h-3" /><circle cx="7.5" cy="17.5" r="2.5" /><circle cx="16.5" cy="17.5" r="2.5" /></>,
   calendar: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>,
@@ -5827,6 +5956,23 @@ function isDateWithinNextDays(value, days) {
   const endDate = new Date(today);
   endDate.setDate(today.getDate() + days);
   return date >= today && date <= endDate;
+}
+
+function reminderDaysForType(settings, type) {
+  const normalizedType = String(type || "").toLowerCase();
+  const key = normalizedType === "emi"
+    ? "emiWindowDays"
+    : normalizedType === "puc"
+      ? "pucWindowDays"
+      : normalizedType === "insurance"
+        ? "insuranceWindowDays"
+        : normalizedType === "fitness"
+          ? "fitnessWindowDays"
+          : normalizedType === "national permit"
+            ? "nationalPermitWindowDays"
+            : "permitWindowDays";
+  const fallback = normalizedType === "emi" ? 7 : 30;
+  return Math.max(1, Math.round(Number(settings?.[key] ?? fallback) || fallback));
 }
 
 function isExpiryWithinNextMonth(value) {
@@ -6034,7 +6180,7 @@ function buildSmartAlerts(data, includeAll = false) {
   });
 
   return alerts
-    .filter((alert) => includeAll || alert.daysLeft <= 10)
+    .filter((alert) => includeAll || alert.daysLeft <= reminderDaysForType(data.reminderSettings, alert.type))
     .sort((first, second) => first.daysLeft - second.daysLeft || first.vehicle.localeCompare(second.vehicle));
 }
 
@@ -8371,6 +8517,12 @@ function summarizeDateFreeScheduleRows(rows, text) {
 }
 
 function findScheduleTableValues(text) {
+  // HDFC repayment PDFs use a stable five-column row layout. Parse this
+  // before the generic bank parsers; otherwise another bank's loose pattern
+  // can accept only alternate HDFC rows and make the monthly schedule appear
+  // to skip installments.
+  const hdfcRows = parseHdfcScheduleRows(text);
+  if (hdfcRows.length > 0) return summarizeScheduleRows(hdfcRows, text);
   // Recognize Poonawalla before generic parsers interpret Rate / Days as money.
   if (isPoonawallaScheduleFormat(text)) {
     const rows = parseOpeningBalanceScheduleRows(text);
@@ -8436,6 +8588,39 @@ function findScheduleTableValues(text) {
   const rows = lineRows.length >= flatRows.length ? lineRows : flatRows;
   if (rows.length === 0) return {};
   return summarizeScheduleRows(rows, text);
+}
+
+function parseHdfcScheduleRows(text) {
+  const normalized = normalizeWrappedPdfNumbers(String(text ?? "").replace(/\s+/g, " "));
+  if (!/HDFC\s+BANK/i.test(normalized)) return [];
+  if (!/Instl\.?\s+Due\s+Date/i.test(normalized) || !/O\/s\s+Principal/i.test(normalized)) return [];
+
+  const money = String.raw`\d[\d,]*(?:\.\d{1,2})?`;
+  const date = String.raw`\d{1,2}[./-]\d{1,2}[./-]\d{2,4}`;
+  const rowPattern = new RegExp(
+    String.raw`(?:^|\s)(\d{1,3})\s+(${date})\s+(${money})\s+(${money})\s+(${money})\s+(${money})(?=\s|$)`,
+    "g"
+  );
+
+  return [...normalized.matchAll(rowPattern)]
+    .map((match) => {
+      const installmentAmount = match[3];
+      const principalPaid = match[4];
+      const interest = match[5];
+      const closingPrincipal = match[6];
+      const openingPrincipal = String(toNumber(closingPrincipal) + toNumber(principalPaid));
+      return makeScheduleRow({
+        installment: match[1],
+        dueDate: match[2],
+        openingPrincipal,
+        installmentAmount,
+        principalPaid,
+        interest,
+        closingPrincipal,
+        rate: deriveAnnualRate(interest, openingPrincipal)
+      });
+    })
+    .filter((row) => row.installment > 0 && toNumber(row.installmentAmount) > 0 && toNumber(row.closingPrincipal) >= 0);
 }
 
 function parseTwoDateScheduleRows(text) {

@@ -940,6 +940,55 @@ button:disabled {
   gap: 16px;
 }
 
+.dashboard-intro {
+  align-items: center;
+  background: linear-gradient(110deg, rgba(15, 34, 64, .92), rgba(10, 28, 51, .72));
+  border: 1px solid rgba(92, 165, 238, .28);
+  border-radius: 16px;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 15px 18px;
+}
+
+.dashboard-intro > div {
+  display: grid;
+  gap: 4px;
+}
+
+.dashboard-intro-kicker {
+  color: #F5A623;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: .12em;
+}
+
+.dashboard-intro strong {
+  color: #F2F7FC;
+  font-size: 15px;
+}
+
+.dashboard-live-status {
+  align-items: center;
+  border: 1px solid rgba(52, 211, 153, .35);
+  border-radius: 999px;
+  color: #9CE8C8;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 850;
+  gap: 7px;
+  padding: 7px 10px;
+}
+
+.dashboard-live-status i {
+  background: #34D399;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(52, 211, 153, .12);
+  height: 6px;
+  width: 6px;
+}
+
 .dashboard-metrics {
   gap: 16px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -956,6 +1005,13 @@ button:disabled {
   overflow: hidden;
   padding: 16px;
   position: relative;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.dashboard-metrics .metric:hover {
+  border-color: rgba(245, 166, 35, .72);
+  box-shadow: 0 14px 28px rgba(2, 10, 22, .28);
+  transform: translateY(-2px);
 }
 
 .metric-icon {
@@ -1029,6 +1085,8 @@ button:disabled {
   border: 1px solid #2A476F;
   border-radius: 14px;
   box-shadow: 0 10px 26px rgba(2,10,22,0.35);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0;
   padding: 12px;
 }
@@ -1059,6 +1117,8 @@ button:disabled {
   background: #1D3A66;
   border: 1px solid #2A476F;
   color: #F0A500;
+  justify-content: flex-start;
+  min-width: 0;
   min-height: 38px;
 }
 
@@ -1066,6 +1126,104 @@ button:disabled {
   background: #0C1E38;
   border-color: #F5A623;
   color: #F2F7FC;
+}
+
+.dashboard-actions .dashboard-action-card {
+  align-items: center;
+  background: linear-gradient(145deg, #173761, #102744);
+  border: 1px solid rgba(92, 165, 238, .3);
+  border-radius: 13px;
+  display: grid;
+  gap: 11px;
+  grid-template-columns: 38px minmax(0, 1fr) 18px;
+  min-height: 68px;
+  padding: 10px 13px;
+  text-align: left;
+}
+
+.dashboard-actions .dashboard-action-card:hover {
+  border-color: rgba(245, 166, 35, .75);
+  box-shadow: 0 12px 24px rgba(2, 10, 22, .28);
+  transform: translateY(-2px);
+}
+
+.dashboard-actions .dashboard-action-card.primary {
+  background: linear-gradient(145deg, #173761, #102744);
+  border-color: rgba(92, 165, 238, .3);
+  color: #F2F7FC;
+}
+
+.dashboard-actions .dashboard-action-card.primary:hover {
+  border-color: rgba(245, 166, 35, .75);
+}
+
+.dashboard-action-icon {
+  align-items: center;
+  background: rgba(4, 17, 34, .32);
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 10px;
+  display: flex;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
+}
+
+.dashboard-action-icon .icon {
+  color: #F5C45B;
+  height: 18px;
+  width: 18px;
+}
+
+.dashboard-action-card.primary .dashboard-action-icon {
+  background: rgba(4, 17, 34, .32);
+  border-color: rgba(255, 255, 255, .2);
+}
+
+.dashboard-action-card.primary .dashboard-action-icon .icon,
+.dashboard-action-card.primary .dashboard-action-arrow .icon {
+  color: #F5C45B;
+}
+
+.dashboard-action-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.dashboard-action-copy strong {
+  color: #F7FAFF;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.dashboard-action-copy small {
+  color: #AFC2D9;
+  font-size: 10px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-action-card.primary .dashboard-action-copy strong,
+.dashboard-action-card.primary .dashboard-action-copy small {
+  color: #F7FAFF;
+}
+
+.dashboard-action-card.primary .dashboard-action-copy small {
+  color: #AFC2D9;
+}
+
+.dashboard-action-arrow {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+}
+
+.dashboard-action-arrow .icon {
+  color: #9CB4CF;
+  height: 17px;
+  width: 17px;
 }
 
 .ghost-action {
@@ -4322,7 +4480,7 @@ details .form-grid {
   border-radius: 16px;
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.48);
   max-height: calc(100vh - 36px);
-  max-width: 820px;
+  max-width: 960px;
   overflow-y: auto;
   width: 100%;
 }
@@ -6376,6 +6534,15 @@ textarea {
 @media (max-width: 680px) {
   .workspace {
     padding: 18px;
+  }
+
+  .dashboard-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-intro {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .topbar,
@@ -9561,6 +9728,36 @@ textarea {
   white-space: pre-wrap;
 }
 
+.customer-interest-chat-history {
+  align-content: start;
+}
+
+.customer-interest-message {
+  max-width: min(88%, 680px);
+}
+
+.customer-interest-message.chat {
+  border-radius: 14px;
+}
+
+.customer-interest-message.customer {
+  justify-self: start;
+  background: #102744;
+}
+
+.customer-interest-message.admin {
+  justify-self: end;
+  background: linear-gradient(145deg, rgba(24, 115, 95, .86), rgba(13, 73, 70, .96));
+  border-color: rgba(61, 205, 176, .56);
+}
+
+.customer-interest-message.review {
+  justify-self: start;
+  max-width: 92%;
+  border-radius: 10px;
+  background: #102744;
+}
+
 .admin-interest-chat-message.admin,
 .customer-interest-message.admin {
   border-color: #2f8d83;
@@ -10194,6 +10391,7 @@ textarea {
 
 .admin-chat-bubble-row.incoming { justify-content: flex-start; }
 .admin-chat-bubble-row.outgoing { justify-content: flex-end; }
+.admin-chat-bubble-row.review { justify-content: flex-start; }
 
 .admin-chat-bubble {
   border: 1px solid rgba(112, 178, 239, .2);
@@ -10211,6 +10409,12 @@ textarea {
   background: #155d5c;
   border-color: rgba(61, 209, 167, .35);
   border-top-right-radius: 4px;
+}
+
+.admin-chat-bubble-row.review .admin-chat-bubble {
+  background: #102744;
+  border-color: rgba(112, 178, 239, .28);
+  border-top-left-radius: 4px;
 }
 
 .admin-chat-bubble strong {
@@ -11951,6 +12155,43 @@ textarea {
 
 .settings-form-wide {
   grid-column: 1 / -1;
+}
+
+.alert-rules-card {
+  margin-top: 18px;
+}
+
+.alert-rules-enabled {
+  align-self: end;
+  min-height: 42px;
+}
+
+.rules-accordion {
+  margin-top: 18px;
+}
+
+.rules-accordion > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.rules-accordion > summary::-webkit-details-marker {
+  display: none;
+}
+
+.rules-accordion > summary > .icon:last-child {
+  margin-left: auto;
+  transition: transform 160ms ease;
+}
+
+.rules-accordion[open] > summary > .icon:last-child {
+  transform: rotate(180deg);
+}
+
+.rules-inner-form {
+  border-top: 1px solid rgba(92, 165, 238, 0.2);
+  margin-top: 14px;
+  padding-top: 16px;
 }
 
 .settings-password-card {
@@ -14408,6 +14649,69 @@ textarea {
 .settings-grid > .settings-card.settings-password-card:nth-child(2) .compact-card-head h3,
 .settings-grid > .settings-card.admin-change-password-card:nth-child(3) .compact-card-head h3 {
   font-size: 17px;
+}
+
+/* Keep the collapsible admin password section compact when closed. */
+.settings-grid > .settings-card.admin-change-password-card {
+  align-self: start !important;
+  grid-column: 1 / -1 !important;
+  min-height: 0 !important;
+  padding: 12px !important;
+}
+
+.settings-grid > .settings-card.admin-change-password-card > summary.compact-card-head {
+  border-bottom: 0;
+  min-height: 54px;
+  outline: none;
+  padding: 0 4px;
+}
+
+.settings-grid > .settings-card.admin-change-password-card > summary.compact-card-head:focus-visible {
+  border-radius: 10px;
+  box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.38);
+}
+
+.settings-grid > .settings-card.admin-change-password-card[open] > .change-password-form {
+  border-top: 1px solid rgba(92, 165, 238, 0.2);
+  margin-top: 10px;
+  padding: 16px 4px 2px;
+}
+
+/* Customer App Access is collapsible to keep Admin Profile compact. */
+.settings-access-accordion > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.settings-access-accordion > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-access-accordion > summary > .icon:last-child {
+  flex: 0 0 auto;
+  margin-left: 12px;
+  transition: transform 160ms ease;
+}
+
+.settings-access-accordion[open] > summary > .icon:last-child {
+  transform: rotate(180deg);
+}
+
+.settings-access-accordion > summary:focus-visible {
+  border-radius: 12px;
+  box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.38);
+  outline: none;
+}
+
+.settings-access-form {
+  border-top: 1px solid rgba(112, 153, 199, 0.32);
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.settings-access-form-actions {
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 
 .security-card-body {
