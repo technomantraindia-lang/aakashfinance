@@ -1355,7 +1355,7 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
       setToast("Message sent to customer");
       return result;
     } catch (error) {
-      setToast(error.message || "Message could not be sent");
+      setToast(backendConnectionError(error).message || "Message could not be sent");
       return false;
     }
   };
@@ -4110,7 +4110,7 @@ function LegacyAdminInterestChatsPage({ interests = [], onApprove, apiBase, toke
           setLoadError("");
         }
       } catch (error) {
-        if (active) setLoadError(error.message || "Chat requests could not be loaded.");
+        if (active) setLoadError(backendConnectionError(error).message || "Chat requests could not be loaded.");
       } finally {
         busy = false;
       }
@@ -4179,7 +4179,7 @@ function AdminInterestChatsPage({ interests = [], onApprove, onSend, apiBase, to
           setLoadError("");
         }
       } catch (error) {
-        if (active) setLoadError(error.message || "Chat requests could not be loaded.");
+        if (active) setLoadError(backendConnectionError(error).message || "Chat requests could not be loaded.");
       } finally {
         busy = false;
       }
@@ -4885,7 +4885,7 @@ function CustomerPortal({ session, onLogout }) {
       setData((current) => ({ ...current, marketplaceInterests: (current.marketplaceInterests ?? []).map((item) => item.id === interestId ? result : item) }));
       return true;
     } catch (error) {
-      setLoadError(error.message || "Message could not be sent.");
+      setLoadError(backendConnectionError(error).message || "Message could not be sent.");
       return false;
     }
   };
