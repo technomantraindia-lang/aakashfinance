@@ -24,6 +24,12 @@ import {
 // ─── Login is verified against the backend database (/api/login) ─────────────
 // No hardcoded demo credentials. Admin creates customer accounts in-app.
 function getApiBase() {
+  // The production web app uses the Vercel same-origin proxy below. Hostinger's
+  // edge protection blocks browser requests that carry a cross-origin Origin
+  // header even though direct navigation to the API works.
+  if (import.meta.env.PROD && typeof window !== "undefined" && window.location.origin) {
+    return "";
+  }
   const envBase = import.meta.env.VITE_API_BASE_URL;
   if (envBase) return envBase.replace(/\/$/, "");
   return "https://erp.aakashfinance.com";
