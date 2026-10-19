@@ -369,6 +369,7 @@ const navItems = [
   ["dues", "Smart Alert", "calendar"],
   ["marketplace", "Marketplace", "store"],
   ["chat-requests", "Interest chat", "people"],
+  ["subscription-plans", "Subscription plans", "money"],
   ["rules", "Rules", "settings"],
   ["settings", "Admin profile", "person"]
 ];
@@ -407,6 +408,8 @@ function emptyAppData() {
     marketplaceThreads: [],
     whatsappTemplates: initialWhatsAppTemplates,
     whatsappLogs: [],
+    subscriptionPlans: [],
+    subscriptionFeatureEnabled: true,
     users: [],
     rolePermissions: permissionRows,
     reminderSettings: {
@@ -496,7 +499,7 @@ async function fetchBackendData(token) {
     }
   };
 
-  const [rawClients, rawVehicles, rawDues, rawListings, rawCaller, rawAudit, rawImports, rawClientImports, rawDocuments, rawVerificationItems, rawSaleClosings, rawMarketplaceThreads, rawUsers, rawSettings, rawReminderSettings, rawWhatsAppTemplates, rawWhatsAppLogs, rawMarketplaceInterests] = await Promise.all([
+  const [rawClients, rawVehicles, rawDues, rawListings, rawCaller, rawAudit, rawImports, rawClientImports, rawDocuments, rawVerificationItems, rawSaleClosings, rawMarketplaceThreads, rawUsers, rawSettings, rawReminderSettings, rawWhatsAppTemplates, rawWhatsAppLogs, rawMarketplaceInterests, rawSubscriptionPlans] = await Promise.all([
     fetchJson("/clients"),
     fetchJson("/vehicles"),
     fetchJson("/dues"),
@@ -514,7 +517,8 @@ async function fetchBackendData(token) {
     fetchJson("/reminder-settings/public", false),
     fetchJson("/whatsapp-templates", false),
     fetchJson("/whatsapp-logs", false),
-    fetchJson("/marketplace-interests", false)
+    fetchJson("/marketplace-interests", false),
+    fetchJson("/subscription-plans", false)
   ]);
 
   const reminderConfig = rawSettings?.reminderSettings ?? (rawReminderSettings && !Array.isArray(rawReminderSettings) ? rawReminderSettings : {});
@@ -526,7 +530,10 @@ async function fetchBackendData(token) {
       email: row.email ?? "",
       city: row.city ?? "",
       phone: row.phone ?? "",
-      callerId: row.caller_id ?? row.callerId ?? ""
+      callerId: row.caller_id ?? row.callerId ?? "",
+      subscriptionPlanId: row.subscription_plan_id ?? row.subscriptionPlanId ?? "",
+      subscriptionStartDate: row.subscription_start_date ?? row.subscriptionStartDate ?? "",
+      subscriptionEndDate: row.subscription_end_date ?? row.subscriptionEndDate ?? ""
     })) : [],
     vehicles: Array.isArray(rawVehicles) ? rawVehicles.map((row) => ({
       id: row.id,
@@ -718,6 +725,22 @@ async function fetchBackendData(token) {
       createdAt: row.createdAt ?? row.created_at ?? "",
       updatedAt: row.updatedAt ?? row.updated_at ?? ""
     })) : [],
+    subscriptionPlans: Array.isArray(rawSubscriptionPlans) ? rawSubscriptionPlans.map((row) => ({
+      id: row.id,
+      name: row.name ?? "",
+      slug: row.slug ?? "",
+      description: row.description ?? "",
+      price: Number(row.price ?? 0),
+      billingCycle: row.billingCycle ?? row.billing_cycle ?? "monthly",
+      startDate: row.startDate ?? row.start_date ?? "",
+      endDate: row.endDate ?? row.end_date ?? "",
+      maxVehicles: Number(row.maxVehicles ?? row.max_vehicles ?? 1),
+      features: Array.isArray(row.features) ? row.features : [],
+      status: row.status ?? "Active",
+      customerCount: Number(row.customerCount ?? row.customer_count ?? 0),
+      createdAt: row.createdAt ?? row.created_at ?? ""
+    })) : [],
+    subscriptionFeatureEnabled: rawSettings?.subscriptionFeatureEnabled !== false,
     users: Array.isArray(rawUsers) ? rawUsers.map((row) => ({
       id: row.id,
       name: row.name,
@@ -1381,6 +1404,28 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
     notifications: [{ id: `n-${Date.now()}`, title, detail, target, unread: true }, ...current.notifications]
   });
 
+  const canAddClientVehicles = (clientId, additionalVehicles = 1) => {
+    if (data.subscriptionFeatureEnabled === false) return { allowed: true };
+    const client = getDataClient(data, clientId);
+    const plan = (data.subscriptionPlans ?? []).find((item) => item.id === client?.subscriptionPlanId);
+    const currentCount = clientVehicleDisplayRows(data.vehicles, clientId).length;
+    const requestedCount = Math.max(0, Number(additionalVehicles) || 0);
+    if (!plan || plan.status !== "Active") {
+      return {
+        allowed: false,
+        message: `${client?.name || "This client"} has no active subscription. Activate a plan before adding fleet.`
+      };
+    }
+    const maxVehicles = Math.max(1, Number(plan.maxVehicles) || 1);
+    if (currentCount + requestedCount > maxVehicles) {
+      return {
+        allowed: false,
+        message: `${client?.name || "This client"} has reached the ${plan.name} limit of ${maxVehicles} vehicle${maxVehicles === 1 ? "" : "s"}. Upgrade the subscription to add more fleet.`
+      };
+    }
+    return { allowed: true, currentCount, maxVehicles, plan };
+  };
+
   const addClient = async (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
@@ -1414,7 +1459,8 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
         email,
         city,
         phone,
-        callerId: ""
+        callerId: "",
+        subscriptionPlanId: result.subscriptionPlanId || ""
       };
       const next = notify({ ...data, clients: [nextClient, ...data.clients] }, "Client added", nextClient.name, "clients");
       persist(withAudit(next, {
@@ -1979,7 +2025,7 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
     }), `${newVehicles.length} assets imported`);
   };
 
-  const importClientExcel = async (event, clientId) => {
+  const importClientExcel = async (event, clientId, onLimitReached) => {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
@@ -2004,6 +2050,13 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
       const importableRows = rows.filter((row) => row.validationStatus === "Valid" && row.regNo);
       const importStamp = Date.now().toString(36);
       const newVehicles = importableRows.map((row, index) => excelRowToVehicle(row, clientId, `v-excel-${importStamp}-${index}`));
+      const subscriptionCheck = canAddClientVehicles(clientId, newVehicles.length);
+      if (!subscriptionCheck.allowed) {
+        setSaveStatus("Error");
+        setToast(subscriptionCheck.message);
+        onLimitReached?.();
+        return;
+      }
       const newDueTasks = importableRows
         .map((row, index) => ({ row, index }))
         .filter(({ row }) => toNumber(row.emiAmount) > 0)
@@ -2039,7 +2092,7 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
     }
   };
 
-  const importClientPdf = async (event, clientId) => {
+  const importClientPdf = async (event, clientId, onLimitReached) => {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
@@ -2096,6 +2149,16 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
         : bodyPdfImport
           ? null
           : excelRowToVehicle({ ...mergedRow, regNo: defaultRegNo }, clientId, vehicleId);
+
+      if (!matchingVehicle && (nextVehicle || bodyPdfImport)) {
+        const subscriptionCheck = canAddClientVehicles(clientId, 1);
+        if (!subscriptionCheck.allowed) {
+          setSaveStatus("Error");
+          setToast(subscriptionCheck.message);
+          onLimitReached?.();
+          return;
+        }
+      }
 
       const pdfDueTask = nextVehicle
         ? buildPdfEmiDueTask(mergedRow, clientId, nextVehicle.id, nextVehicle.callerId || client?.callerId || "")
@@ -2171,8 +2234,15 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
     }
   };
 
-  const addManualClientVehicle = (event, clientId) => {
+  const addManualClientVehicle = (event, clientId, onLimitReached) => {
     event.preventDefault();
+    const subscriptionCheck = canAddClientVehicles(clientId, 1);
+    if (!subscriptionCheck.allowed) {
+      setSaveStatus("Error");
+      setToast(subscriptionCheck.message);
+      onLimitReached?.();
+      return false;
+    }
     const form = new FormData(event.currentTarget);
     const row = {
       ...mapManualVehicleForm(form),
@@ -2544,6 +2614,167 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
     }
   };
 
+  const updateSubscriptionFeatureEnabled = async (enabled) => {
+    setSaveStatus("Saving");
+    try {
+      const response = await fetch(`${API_BASE}/api/subscription-feature`, {
+        method: "PUT",
+        headers: authHeaders(session.token, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ enabled })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Subscription feature setting could not be updated.");
+      setData((current) => ({ ...current, subscriptionFeatureEnabled: result.subscriptionFeatureEnabled !== false }));
+      setSaveStatus("Database");
+      setLastSavedAt(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
+      setToast(enabled ? "Subscription feature enabled" : "Subscription feature disabled");
+      return true;
+    } catch (err) {
+      setSaveStatus("Error");
+      setToast(err.message || "Subscription feature setting could not be updated.");
+      return false;
+    }
+  };
+
+  const readSubscriptionPlanForm = (event) => {
+    const form = new FormData(event.currentTarget);
+    const features = String(form.get("features") || "")
+      .split(/[,\n]/)
+      .map((feature) => feature.trim())
+      .filter(Boolean);
+    const payload = {
+      name: String(form.get("name") || "").trim(),
+      slug: String(form.get("slug") || "").trim(),
+      description: String(form.get("description") || "").trim(),
+      price: Number(form.get("price") || 0),
+      billingCycle: String(form.get("billingCycle") || "monthly"),
+      maxVehicles: Number(form.get("maxVehicles") || 1),
+      status: String(form.get("status") || "Active"),
+      features
+    };
+    return payload;
+  };
+
+  const createSubscriptionPlan = async (event) => {
+    event.preventDefault();
+    const payload = readSubscriptionPlanForm(event);
+    if (!payload.name) {
+      setToast("Plan name is required");
+      return false;
+    }
+    if (!Number.isFinite(payload.price) || payload.price < 0) {
+      setToast("Enter a valid non-negative price");
+      return false;
+    }
+    setSaveStatus("Saving");
+    try {
+      const response = await fetch(`${API_BASE}/api/subscription-plans`, {
+        method: "POST",
+        headers: authHeaders(session.token, { "Content-Type": "application/json" }),
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Subscription plan could not be created.");
+      const savedPlan = result;
+      setData((current) => ({ ...current, subscriptionPlans: [savedPlan, ...(current.subscriptionPlans ?? [])] }));
+      setSaveStatus("Database");
+      setLastSavedAt(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
+      setToast(`Plan “${savedPlan.name || payload.name}” saved to database`);
+      event.currentTarget.reset();
+      return true;
+    } catch (err) {
+      setSaveStatus("Error");
+      setToast(err.message || "Subscription plan could not be created.");
+      return false;
+    }
+  };
+
+  const updateSubscriptionPlan = async (planId, event) => {
+    event.preventDefault();
+    const payload = readSubscriptionPlanForm(event);
+    if (!payload.name) {
+      setToast("Plan name is required");
+      return false;
+    }
+    if (!Number.isFinite(payload.price) || payload.price < 0) {
+      setToast("Enter a valid non-negative price");
+      return false;
+    }
+    setSaveStatus("Saving");
+    try {
+      const response = await fetch(`${API_BASE}/api/subscription-plans/${encodeURIComponent(planId)}`, {
+        method: "PUT",
+        headers: authHeaders(session.token, { "Content-Type": "application/json" }),
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Subscription plan could not be updated.");
+      setData((current) => ({ ...current, subscriptionPlans: (current.subscriptionPlans ?? []).map((item) => item.id === planId ? result : item) }));
+      setSaveStatus("Database");
+      setLastSavedAt(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
+      setToast(`Plan “${result.name || payload.name}” updated in database`);
+      return true;
+    } catch (err) {
+      setSaveStatus("Error");
+      setToast(err.message || "Subscription plan could not be updated.");
+      return false;
+    }
+  };
+
+  const deleteSubscriptionPlan = async (plan) => {
+    if (!window.confirm(`Delete subscription plan “${plan.name}”? This cannot be undone.`)) return false;
+    setSaveStatus("Deleting");
+    try {
+      const response = await fetch(`${API_BASE}/api/subscription-plans/${encodeURIComponent(plan.id)}`, {
+        method: "DELETE",
+        headers: authHeaders(session.token)
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Subscription plan could not be deleted.");
+      setData((current) => ({ ...current, subscriptionPlans: (current.subscriptionPlans ?? []).filter((item) => item.id !== plan.id) }));
+      setSaveStatus("Database");
+      setLastSavedAt(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
+      setToast(`Plan “${plan.name}” deleted`);
+      return true;
+    } catch (err) {
+      setSaveStatus("Error");
+      setToast(err.message || "Subscription plan could not be deleted.");
+      return false;
+    }
+  };
+
+  const updateClientSubscriptionPlan = async (clientId, subscriptionPlanId, subscriptionStartDate = "", subscriptionEndDate = "") => {
+    setSaveStatus("Saving");
+    try {
+      const response = await fetch(`${API_BASE}/api/clients/${encodeURIComponent(clientId)}/subscription-plan`, {
+        method: "PATCH",
+        headers: authHeaders(session.token, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ subscriptionPlanId, subscriptionStartDate, subscriptionEndDate })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Client plan could not be updated.");
+      setData((current) => ({
+        ...current,
+        clients: (current.clients ?? []).map((client) => client.id === clientId
+          ? {
+            ...client,
+            subscriptionPlanId: result.subscriptionPlanId || subscriptionPlanId,
+            subscriptionStartDate: result.subscriptionStartDate || subscriptionStartDate || "",
+            subscriptionEndDate: result.subscriptionEndDate || subscriptionEndDate || ""
+          }
+          : client)
+      }));
+      setSaveStatus("Database");
+      setLastSavedAt(new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }));
+      setToast("Client subscription plan updated");
+      return true;
+    } catch (err) {
+      setSaveStatus("Error");
+      setToast(err.message || "Client plan could not be updated.");
+      return false;
+    }
+  };
+
   const deleteCallerAccount = async (caller) => {
     if (!window.confirm(`Delete caller ${caller.name}? Their assigned dues will become unassigned.`)) return;
     setSaveStatus("Deleting");
@@ -2666,13 +2897,14 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
 
         {section === "dashboard" && <Dashboard data={data} totals={totals} setSection={openSection} />}
         {section === "clients" && <Clients data={data} addClient={addClient} openClientProfile={openClientProfile} deleteClientAndAccount={deleteClientAndAccount} />}
-        {section === "client-profile" && <ClientProfile data={data} clientId={selectedClientId} validationRows={activeValidation?.clientId === selectedClientId ? activeValidation.rows : []} backToClients={() => openSection("clients")} importClientExcel={importClientExcel} importClientPdf={importClientPdf} addManualClientVehicle={addManualClientVehicle} deleteClientVehicle={deleteClientVehicle} deleteClientAndAccount={deleteClientAndAccount} />}
+        {section === "client-profile" && <ClientProfile data={data} clientId={selectedClientId} validationRows={activeValidation?.clientId === selectedClientId ? activeValidation.rows : []} backToClients={() => openSection("clients")} importClientExcel={importClientExcel} importClientPdf={importClientPdf} addManualClientVehicle={addManualClientVehicle} deleteClientVehicle={deleteClientVehicle} deleteClientAndAccount={deleteClientAndAccount} updateClientSubscriptionPlan={updateClientSubscriptionPlan} />}
         {toast && <button className="toast" onClick={() => setToast("")}>{toast}</button>}
 
         {section === "fleet" && <Fleet data={data} updateVehicleFinance={updateVehicleFinance} updateVehicleCompliance={updateVehicleCompliance} createListing={createListing} />}
         {section === "dues" && <Dues data={data} openClientProfile={openClientProfile} />}
         {section === "marketplace" && <Marketplace data={data} interests={data.marketplaceInterests ?? []} approveInterest={approveMarketplaceInterest} updateListingStatus={updateListingStatus} saveSaleClosing={saveSaleClosing} markAdminListingSold={markAdminListingSold} deleteMarketplaceListing={deleteMarketplaceListing} openFleet={() => openSection("fleet")} />}
         {section === "chat-requests" && <AdminInterestChatsPage interests={data.marketplaceInterests ?? []} onApprove={approveMarketplaceInterest} onSend={sendAdminMarketplaceInterestMessage} apiBase={API_BASE} token={session.token} />}
+        {section === "subscription-plans" && <SubscriptionPlans data={data} createSubscriptionPlan={createSubscriptionPlan} updateSubscriptionPlan={updateSubscriptionPlan} deleteSubscriptionPlan={deleteSubscriptionPlan} updateSubscriptionFeatureEnabled={updateSubscriptionFeatureEnabled} />}
         {section === "import" && <ImportRows data={data} importValidRows={importValidRows} lastSavedAt={lastSavedAt} />}
         {section === "rules" && <RulesSettings data={data} saveCommonPassword={saveCommonPassword} saveReminderSettings={saveReminderSettings} />}
         {section === "settings" && <Settings data={data} session={session} saveAdminProfile={saveAdminProfile} changeAdminPassword={changeAdminPassword} saveRolePermissions={saveRolePermissions} />}
@@ -2714,9 +2946,101 @@ function Dashboard({ data, totals, setSection }) {
   );
 }
 
+function SubscriptionPlans({ data, createSubscriptionPlan, updateSubscriptionPlan, deleteSubscriptionPlan, updateSubscriptionFeatureEnabled }) {
+  const [showCreate, setShowCreate] = useState(false);
+  const [editingPlan, setEditingPlan] = useState(null);
+  const plans = data.subscriptionPlans ?? [];
+  const subscriptionFeatureEnabled = data.subscriptionFeatureEnabled !== false;
+  const planCustomerCount = (plan) => {
+    const loadedCount = Number(plan.customerCount);
+    const clientCount = (data.clients ?? []).filter((client) => client.subscriptionPlanId === plan.id).length;
+    return Math.max(Number.isFinite(loadedCount) ? loadedCount : 0, clientCount);
+  };
+  const formatPrice = (price, billingCycle) => {
+    const amount = Number(price || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+    return `₹${amount}${billingCycle === "monthly" ? "/mo" : billingCycle === "yearly" ? "/yr" : ""}`;
+  };
+
+  return (
+    <section className="subscription-plans-page">
+      <div className="subscription-plans-hero">
+        <div>
+          <span className="dashboard-intro-kicker">BILLING WORKSPACE</span>
+          <h2>Subscription plans</h2>
+          <p>Create pricing plans once and keep their limits and features ready for customer subscriptions.</p>
+        </div>
+        <button className="subscription-create-button" type="button" onClick={() => { setEditingPlan(null); setShowCreate((current) => !current); }}>
+          <Icon name={showCreate ? "close" : "plus"} />{showCreate ? (editingPlan ? "Close edit page" : "Close create page") : "Create new plan"}
+        </button>
+      </div>
+
+      <section className={`subscription-feature-control ${subscriptionFeatureEnabled ? "enabled" : "disabled"}`}>
+        <div className="subscription-feature-control-icon"><Icon name="money" /></div>
+        <div className="subscription-feature-control-copy"><span>SUBSCRIPTION FEATURE</span><h3>Client plan popup</h3><p>{subscriptionFeatureEnabled ? "Enabled — customer app and client profiles show subscription controls." : "Disabled — subscription controls are hidden in the customer app and client profiles."}</p></div>
+        <button
+          className="subscription-feature-toggle"
+          type="button"
+          aria-pressed={subscriptionFeatureEnabled}
+          onClick={() => {
+            const nextValue = !subscriptionFeatureEnabled;
+            const message = nextValue
+              ? "Enable subscription controls? They will appear in the customer app and client profiles."
+              : "Disable subscription controls? They will be hidden in the customer app and client profiles.";
+            if (window.confirm(message)) void updateSubscriptionFeatureEnabled(nextValue);
+          }}
+        >
+          <span>{subscriptionFeatureEnabled ? "ON" : "OFF"}</span><i />
+        </button>
+      </section>
+
+      {showCreate && (
+        <section className="subscription-create-card">
+          <div className="subscription-section-heading">
+            <div><span>{editingPlan ? "EDIT PLAN" : "NEW PLAN"}</span><h3>{editingPlan ? "Edit subscription plan" : "Create a subscription plan"}</h3><p>All values are validated and saved directly in the database.</p></div>
+            <span className="subscription-database-pill"><Icon name="cloud" /> Database</span>
+          </div>
+          <form className="subscription-plan-form" key={editingPlan?.id || "new-plan"} onSubmit={async (event) => { const saved = editingPlan ? await updateSubscriptionPlan(editingPlan.id, event) : await createSubscriptionPlan(event); if (saved) { setShowCreate(false); setEditingPlan(null); } }}>
+            <label><span>Plan name *</span><input name="name" required placeholder="e.g. Professional" defaultValue={editingPlan?.name || ""} /></label>
+            <label><span>Slug <small>(optional)</small></span><input name="slug" placeholder="professional" pattern="[a-z0-9-]+" defaultValue={editingPlan?.slug || ""} /></label>
+            <label className="subscription-form-wide"><span>Description</span><textarea name="description" rows="3" placeholder="What this plan includes" defaultValue={editingPlan?.description || ""} /></label>
+            <label><span>Price (₹) *</span><input name="price" type="number" min="0" step="0.01" defaultValue={editingPlan?.price ?? 0} required /></label>
+            <label><span>Billing cycle *</span><select name="billingCycle" defaultValue={editingPlan?.billingCycle || "monthly"}><option value="monthly">Monthly</option><option value="yearly">Yearly</option><option value="one_time">One time</option></select></label>
+            <label><span>Max vehicles</span><input name="maxVehicles" type="number" min="1" step="1" defaultValue={editingPlan?.maxVehicles ?? 10} /></label>
+            <label className="subscription-form-wide"><span>Features <small>(one per line or comma separated)</small></span><textarea name="features" rows="5" placeholder={"Fleet dashboard\nSmart alerts\nPriority support"} defaultValue={(editingPlan?.features || []).join("\n")} /></label>
+            <div className="subscription-form-actions subscription-form-wide"><button type="button" className="subscription-cancel-button" onClick={() => { setShowCreate(false); setEditingPlan(null); }}>Cancel</button><button className="subscription-save-button" type="submit"><Icon name="check" />{editingPlan ? "Update plan in database" : "Save plan to database"}</button></div>
+          </form>
+        </section>
+      )}
+
+      <section className="subscription-plan-list-card">
+        <div className="subscription-section-heading"><div><span>PLAN CATALOG</span><h3>Saved plans</h3><p>{plans.length} plan{plans.length === 1 ? "" : "s"} available in the database.</p></div><span className="subscription-count-pill">{plans.length} total</span></div>
+        {plans.length === 0 ? <div className="subscription-empty"><Icon name="money" /><strong>No subscription plans yet</strong><span>Click “Create new plan” to add your first plan.</span></div> : (
+          <div className="subscription-plan-grid">
+            {plans.map((plan) => (
+              <article className="subscription-plan-card" key={plan.id}>
+                <div className="subscription-plan-card-head"><div><span className="subscription-plan-status">{plan.status}</span><h4>{plan.name}</h4></div><strong>{formatPrice(plan.price, plan.billingCycle)}</strong></div>
+                <p className="subscription-plan-description">{plan.description || "No description added."}</p>
+                <div className="subscription-plan-metrics">
+                  <div className="subscription-plan-limits"><span><strong>{plan.maxVehicles}</strong> vehicle{plan.maxVehicles === 1 ? "" : "s"}<small>Maximum fleet size</small></span></div>
+                  <div className="subscription-plan-subscribers"><Icon name="people" /><span><strong>{planCustomerCount(plan)}</strong><small>Customer{planCustomerCount(plan) === 1 ? "" : "s"} subscribed</small></span></div>
+                </div>
+                {!!plan.features?.length && <ul>{plan.features.slice(0, 4).map((feature) => <li key={feature}><Icon name="check" />{feature}</li>)}</ul>}
+                <small className="subscription-plan-slug">/{plan.slug}</small>
+                <div className="subscription-plan-actions"><button type="button" className="subscription-edit-button" onClick={() => { setEditingPlan(plan); setShowCreate(true); }}><Icon name="settings" />Edit</button><button type="button" className="subscription-delete-button" onClick={() => void deleteSubscriptionPlan(plan)}><Icon name="trash" />Delete</button></div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </section>
+  );
+}
+
 function Clients({ data, addClient, openClientProfile, deleteClientAndAccount }) {
   const [search, setSearch] = useState("");
   const [showAddClient, setShowAddClient] = useState(false);
+  const [selectedPlanId, setSelectedPlanId] = useState("");
+  const [planMenuOpen, setPlanMenuOpen] = useState(false);
   const [page, setPage] = useState(1);
   const pageSize = 20;
   const normalizedSearch = search.trim().toLowerCase();
@@ -2729,11 +3053,15 @@ function Clients({ data, addClient, openClientProfile, deleteClientAndAccount })
   const totalPages = Math.max(1, Math.ceil(filteredClients.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const visibleClients = filteredClients.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const selectablePlans = (data.subscriptionPlans ?? []).filter((plan) => plan.status !== "Inactive");
+  const selectedPlan = selectablePlans.find((plan) => plan.id === selectedPlanId);
   useEffect(() => setPage(1), [normalizedSearch]);
   const handleAddClient = async (event) => {
     const created = await addClient(event);
     if (created) {
       setShowAddClient(false);
+      setSelectedPlanId("");
+      setPlanMenuOpen(false);
       setPage(1);
     }
   };
@@ -2748,7 +3076,7 @@ function Clients({ data, addClient, openClientProfile, deleteClientAndAccount })
           </div>
           <div className="clients-table-head-actions">
             <span className="client-total-pill">{data.clients.length} Clients</span>
-            <button className="clients-add-button" type="button" onClick={() => setShowAddClient(true)}><Icon name="plus" />Add client</button>
+            <button className="clients-add-button" type="button" onClick={() => { setSelectedPlanId(""); setPlanMenuOpen(false); setShowAddClient(true); }}><Icon name="plus" />Add client</button>
           </div>
         </div>
         <div className="clients-directory-toolbar">
@@ -2765,7 +3093,7 @@ function Clients({ data, addClient, openClientProfile, deleteClientAndAccount })
         </div>
         <div className="clients-table-scroll">
         <table className="clients-table">
-          <thead><tr><th>Client</th><th>City</th><th>Phone</th><th>Vehicles</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Client</th><th>City</th><th>Phone</th><th>Plan</th><th>Vehicles</th><th>Actions</th></tr></thead>
           <tbody>
             {visibleClients.map((client) => {
               const vehicleCount = data.vehicles.filter((vehicle) => vehicle.clientId === client.id && !isBodyRegNo(vehicle.regNo)).length;
@@ -2779,6 +3107,7 @@ function Clients({ data, addClient, openClientProfile, deleteClientAndAccount })
                   </td>
                   <td><span className="client-city-pill">{client.city}</span></td>
                   <td className="client-phone-cell">{client.phone}</td>
+                  <td><span className="client-plan-pill">{data.subscriptionPlans?.find((plan) => plan.id === client.subscriptionPlanId)?.name || "No plan"}</span></td>
                   <td><span className="client-count-pill">{vehicleCount}</span></td>
                   <td>
                     <div className="client-row-actions">
@@ -2795,7 +3124,7 @@ function Clients({ data, addClient, openClientProfile, deleteClientAndAccount })
             })}
             {visibleClients.length === 0 && (
               <tr>
-                <td className="clients-empty-cell" colSpan="5">No clients match your search.</td>
+                <td className="clients-empty-cell" colSpan="6">No clients match your search.</td>
               </tr>
             )}
           </tbody>
@@ -2820,6 +3149,26 @@ function Clients({ data, addClient, openClientProfile, deleteClientAndAccount })
             <label>City<input name="city" placeholder="Jaipur" required /></label>
             <label>Phone<input name="phone" placeholder="+919812345678" required /></label>
             <label>Email (login)<input name="email" type="email" placeholder="owner@company.com" required /></label>
+            <label className="client-form-wide client-plan-create-legacy">Subscription plan
+              <input type="hidden" name="subscriptionPlanId" value={selectedPlanId} />
+              <div className={`client-plan-picker ${planMenuOpen ? "open" : ""}`}>
+                <button className="client-plan-picker-trigger" type="button" onClick={() => setPlanMenuOpen((value) => !value)} aria-expanded={planMenuOpen}>
+                  <span><strong>{selectedPlan?.name || "Select a plan"}</strong>{selectedPlan && <small>₹{Number(selectedPlan.price || 0).toLocaleString("en-IN")}/{selectedPlan.billingCycle === "yearly" ? "yr" : selectedPlan.billingCycle === "one_time" ? "one time" : "mo"}</small>}</span>
+                  <Icon name={planMenuOpen ? "chevron-down" : "chevron-right"} />
+                </button>
+                {planMenuOpen && <div className="client-plan-picker-menu" role="listbox">
+                  {selectablePlans.map((plan) => <button className={`client-plan-option ${selectedPlanId === plan.id ? "selected" : ""}`} type="button" key={plan.id} onClick={() => { setSelectedPlanId(plan.id); setPlanMenuOpen(false); }}>
+                    <span><strong>{plan.name}</strong><small>₹{Number(plan.price || 0).toLocaleString("en-IN")}/{plan.billingCycle === "yearly" ? "yr" : plan.billingCycle === "one_time" ? "one time" : "mo"}</small></span>
+                    <Icon name={selectedPlanId === plan.id ? "check" : "chevron-right"} />
+                  </button>)}
+                  {selectablePlans.length === 0 && <span className="client-plan-option-empty">Create an active subscription plan first.</span>}
+                </div>}
+              </div>
+              {selectedPlan && <span className="client-plan-selection-hint">Valid: {formatDisplayDate(selectedPlan.startDate)} – {formatDisplayDate(selectedPlan.endDate)}</span>}
+              <select className="client-plan-native-fallback" aria-hidden="true" tabIndex="-1">
+              <option value="" disabled>Select a plan</option>
+              {selectablePlans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name} · ₹{Number(plan.price || 0).toLocaleString("en-IN")}/{plan.billingCycle === "yearly" ? "yr" : plan.billingCycle === "one_time" ? "one time" : "mo"}</option>)}
+            </select></label>
             <div className="client-modal-actions"><button className="secondary-button" type="button" onClick={() => setShowAddClient(false)}>Cancel</button><button type="submit"><Icon name="plus" />Create client</button></div>
           </form>
         </section>
@@ -2906,9 +3255,41 @@ function ManualVehicleForm({ client, onSubmit }) {
   );
 }
 
-function ClientProfile({ data, clientId, validationRows = [], backToClients, importClientExcel, importClientPdf, addManualClientVehicle, deleteClientVehicle, deleteClientAndAccount }) {
+function ClientProfile({ data, clientId, validationRows = [], backToClients, importClientExcel, importClientPdf, addManualClientVehicle, deleteClientVehicle, deleteClientAndAccount, updateClientSubscriptionPlan }) {
   const [entryMode, setEntryMode] = useState("excel");
+  const [selectedPlanId, setSelectedPlanId] = useState("");
+  const [subscriptionStartDate, setSubscriptionStartDate] = useState("");
+  const [subscriptionEndDate, setSubscriptionEndDate] = useState("");
+  const [planMenuOpen, setPlanMenuOpen] = useState(false);
+  const [planModalOpen, setPlanModalOpen] = useState(false);
+  const [subscriptionDetailsOpen, setSubscriptionDetailsOpen] = useState(false);
   const client = getDataClient(data, clientId);
+  const subscriptionFeatureEnabled = data.subscriptionFeatureEnabled !== false;
+  const availablePlans = (data.subscriptionPlans ?? []).filter((plan) => plan.status === "Active");
+  const selectedPlan = availablePlans.find((plan) => plan.id === selectedPlanId);
+  useEffect(() => {
+    const currentPlan = (data.subscriptionPlans ?? []).find((plan) => plan.id === client?.subscriptionPlanId);
+    const startDate = client?.subscriptionStartDate || todayInputDate();
+    setSelectedPlanId(client?.subscriptionPlanId || "");
+    setSubscriptionStartDate(startDate);
+    setSubscriptionEndDate(
+      client?.subscriptionEndDate || calculateSubscriptionEndDate(startDate, currentPlan?.billingCycle || "monthly")
+    );
+    setPlanMenuOpen(false);
+  }, [client?.id, client?.subscriptionPlanId]);
+  useEffect(() => {
+    if (!selectedPlanId || !subscriptionStartDate) return;
+    const savedPlan = selectedPlanId === client?.subscriptionPlanId;
+    if (savedPlan && client?.subscriptionEndDate) return;
+    const plan = availablePlans.find((item) => item.id === selectedPlanId);
+    setSubscriptionEndDate(calculateSubscriptionEndDate(subscriptionStartDate, plan?.billingCycle || "monthly"));
+  }, [selectedPlanId, subscriptionStartDate, client?.subscriptionPlanId, client?.subscriptionEndDate, data.subscriptionPlans]);
+  useEffect(() => {
+    const assignedPlan = (data.subscriptionPlans ?? []).find((plan) => plan.id === client?.subscriptionPlanId);
+    const subscriptionIsCurrent = isSubscriptionCurrentlyActive(client, assignedPlan);
+    if (client?.id && subscriptionFeatureEnabled && !subscriptionIsCurrent) setPlanModalOpen(true);
+    if (!subscriptionFeatureEnabled || subscriptionIsCurrent) setPlanModalOpen(false);
+  }, [client?.id, client?.subscriptionPlanId, client?.subscriptionStartDate, client?.subscriptionEndDate, data.subscriptionPlans, subscriptionFeatureEnabled]);
 
   if (!client) {
     return (
@@ -2919,6 +3300,19 @@ function ClientProfile({ data, clientId, validationRows = [], backToClients, imp
     );
   }
 
+  const clientPlan = (data.subscriptionPlans ?? []).find((plan) => plan.id === client.subscriptionPlanId);
+  const hasActiveSubscription = isSubscriptionCurrentlyActive(client, clientPlan);
+  const planChangesPending = Boolean(selectedPlanId) && (selectedPlanId !== client.subscriptionPlanId || subscriptionStartDate !== (client.subscriptionStartDate || "") || subscriptionEndDate !== (client.subscriptionEndDate || ""));
+  const saveClientPlan = async () => {
+    const samePlan = selectedPlanId === client.subscriptionPlanId;
+    const sameDates = subscriptionStartDate === (client.subscriptionStartDate || "") && subscriptionEndDate === (client.subscriptionEndDate || "");
+    if (!selectedPlanId || (samePlan && sameDates)) return;
+    const saved = await updateClientSubscriptionPlan(client.id, selectedPlanId, subscriptionStartDate, subscriptionEndDate);
+    if (saved) {
+      setPlanMenuOpen(false);
+      setPlanModalOpen(false);
+    }
+  };
   const clientVehicles = canonicalVehicleRows(data.vehicles, client.id);
   // Manual entries are real vehicles even when their registration text contains "body".
   // Only hide a materialized trailer when its truck is already displayed; the
@@ -2937,10 +3331,16 @@ function ClientProfile({ data, clientId, validationRows = [], backToClients, imp
     ? excelClosingTotal
     : clientVehicles.reduce((sum, vehicle) => sum + liability(vehicle), 0);
   const excelLoanTotal = importedAssets.reduce((sum, row) => sum + toNumber(row.loanAmount), 0);
-  const saveManualVehicle = (event) => {
-    addManualClientVehicle(event, client.id);
-    setEntryMode("excel");
+  const openSubscriptionLimitPopup = () => {
+    setPlanMenuOpen(false);
+    setPlanModalOpen(true);
   };
+  const saveManualVehicle = (event) => {
+    const saved = addManualClientVehicle(event, client.id, openSubscriptionLimitPopup);
+    if (saved !== false) setEntryMode("excel");
+  };
+  const handleClientExcelImport = (event) => importClientExcel(event, client.id, openSubscriptionLimitPopup);
+  const handleClientPdfImport = (event) => importClientPdf(event, client.id, openSubscriptionLimitPopup);
 
   return (
     <section className="client-profile stack">
@@ -2956,9 +3356,48 @@ function ClientProfile({ data, clientId, validationRows = [], backToClients, imp
         <div className="profile-identity">
           <div className="profile-avatar">{String(client.name || "?").slice(0, 1)}</div>
           <div className="profile-copy">
-            <span>Client profile</span>
-            <h2>{client.name}</h2>
-            <p>{client.city} | {client.phone} | {client.email || "No email"}</p>
+            <div className="profile-main-head">
+              <div className="profile-main-heading">
+                <span>Client profile</span>
+                <h2>{client.name}</h2>
+                <p>{client.city} | {client.phone} | {client.email || "No email"}</p>
+              </div>
+              <span className={`profile-client-status ${hasActiveSubscription ? "active" : "inactive"}`}>
+                <Icon name={hasActiveSubscription ? "check" : "clock"} />
+                {hasActiveSubscription ? "Active client" : "Plan inactive"}
+              </span>
+            </div>
+            <button className={`client-profile-plan client-profile-plan-button ${subscriptionFeatureEnabled ? "" : "disabled"}`} type="button" disabled={!subscriptionFeatureEnabled} onClick={() => { setSelectedPlanId(clientPlan?.id || ""); setPlanMenuOpen(false); setPlanModalOpen(true); }}>
+              <span className="client-profile-plan-icon"><Icon name="money" /></span>
+              <span className="client-profile-plan-copy"><small>Subscription plan</small><strong>{clientPlan?.name || "No plan assigned"}</strong></span>
+              <em className={hasActiveSubscription ? "active" : "inactive"}>{hasActiveSubscription ? "Active" : "Inactive"}</em>
+              <Icon name="chevron-right" />
+            </button>
+            {clientPlan && (
+              <div className="client-profile-subscription-meta">
+                <small className="client-profile-plan-dates">Valid {formatDisplayDate(client.subscriptionStartDate)} – {formatDisplayDate(client.subscriptionEndDate)}</small>
+                <button className="client-profile-subscription-details-button" type="button" onClick={() => setSubscriptionDetailsOpen(true)}><Icon name="eye" />View subscription details</button>
+              </div>
+            )}
+            <div className="client-plan-upgrade">
+              <div className="client-plan-upgrade-heading"><strong>{hasActiveSubscription ? "Upgrade or change plan" : "Activate subscription"}</strong><span>Manage this client’s billing plan here.</span></div>
+              <div className="client-plan-picker">
+                <button className="client-plan-picker-trigger" type="button" onClick={() => setPlanMenuOpen((value) => !value)} aria-expanded={planMenuOpen}>
+                  <span><strong>{selectedPlan?.name || clientPlan?.name || "Select a plan"}</strong>{selectedPlan && <small>₹{Number(selectedPlan.price || 0).toLocaleString("en-IN")}/{selectedPlan.billingCycle === "yearly" ? "yr" : selectedPlan.billingCycle === "one_time" ? "one time" : "mo"}</small>}</span>
+                  <Icon name={planMenuOpen ? "chevron-down" : "chevron-right"} />
+                </button>
+                {planMenuOpen && <div className="client-plan-picker-menu" role="listbox">
+                  {availablePlans.map((plan) => <button className={`client-plan-option ${selectedPlanId === plan.id ? "selected" : ""}`} type="button" key={plan.id} onClick={() => { setSelectedPlanId(plan.id); setPlanMenuOpen(false); }}>
+                    <span><strong>{plan.name}</strong><small>₹{Number(plan.price || 0).toLocaleString("en-IN")}/{plan.billingCycle === "yearly" ? "yr" : plan.billingCycle === "one_time" ? "one time" : "mo"} · {formatDisplayDate(plan.startDate)} – {formatDisplayDate(plan.endDate)}</small></span>
+                    <Icon name={selectedPlanId === plan.id ? "check" : "chevron-right"} />
+                  </button>)}
+                  {availablePlans.length === 0 && <span className="client-plan-option-empty">Create an active plan first.</span>}
+                </div>}
+              </div>
+              <button className="client-plan-upgrade-button" type="button" disabled={!selectedPlanId || selectedPlanId === client.subscriptionPlanId} onClick={() => void saveClientPlan()}>
+                <Icon name="check" />{hasActiveSubscription ? "Save plan upgrade" : "Activate subscription"}
+              </button>
+            </div>
           </div>
         </div>
         <div className="profile-total">
@@ -3045,7 +3484,7 @@ function ClientProfile({ data, clientId, validationRows = [], backToClients, imp
               <span>Excel columns se registration, finance, policy, PUC, fitness and permit details save honge.</span>
             </div>
             <label className="file-picker">
-              <input type="file" accept=".xlsx,.xls" onChange={(event) => importClientExcel(event, client.id)} />
+              <input type="file" accept=".xlsx,.xls" onChange={handleClientExcelImport} />
               Choose Excel
             </label>
           </div>
@@ -3057,7 +3496,7 @@ function ClientProfile({ data, clientId, validationRows = [], backToClients, imp
               <span>PDF ya image se EMI schedule read hoga aur Agreement Number se matching vehicle finance data update hoga.</span>
             </div>
             <label className="file-picker">
-              <input type="file" accept=".pdf,application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => importClientPdf(event, client.id)} />
+              <input type="file" accept=".pdf,application/pdf,image/png,image/jpeg,image/webp" onChange={handleClientPdfImport} />
               Choose PDF / Image
             </label>
           </div>
@@ -3103,6 +3542,65 @@ function ClientProfile({ data, clientId, validationRows = [], backToClients, imp
           <Empty text="No vehicles found for this client." />
         )}
       </section>
+
+      {subscriptionDetailsOpen && clientPlan && <div className="client-plan-modal-backdrop" role="presentation" onMouseDown={() => setSubscriptionDetailsOpen(false)}>
+        <section className="client-plan-modal client-subscription-details-modal" role="dialog" aria-modal="true" aria-labelledby="subscription-details-title" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="client-plan-modal-head">
+            <div><span className="client-plan-modal-icon"><Icon name="money" /></span><div><span>SUBSCRIPTION DETAILS</span><h2 id="subscription-details-title">{clientPlan.name}</h2><small>{client.name}</small></div></div>
+            <button className="icon-button" type="button" onClick={() => setSubscriptionDetailsOpen(false)} aria-label="Close subscription details"><Icon name="close" /></button>
+          </div>
+          <div className="client-subscription-details-body">
+            <div className="client-subscription-details-status"><span>Status</span><strong className={hasActiveSubscription ? "active" : "inactive"}>{hasActiveSubscription ? "Active" : "Inactive"}</strong></div>
+            <div className="client-subscription-details-grid">
+              <div><span>Plan</span><strong>{clientPlan.name}</strong></div>
+              <div><span>Price</span><strong>INR {Number(clientPlan.price || 0).toLocaleString("en-IN")}/{clientPlan.billingCycle === "yearly" ? "yr" : clientPlan.billingCycle === "one_time" ? "one time" : "mo"}</strong></div>
+              <div><span>Started on</span><strong>{formatDisplayDate(client.subscriptionStartDate)}</strong></div>
+              <div><span>Ends on</span><strong>{formatDisplayDate(client.subscriptionEndDate)}</strong></div>
+              <div><span>Vehicle limit</span><strong>{clientPlan.maxVehicles} vehicles</strong></div>
+              <div><span>Features</span><strong>{clientPlan.features?.length || 0} included</strong></div>
+            </div>
+          </div>
+          <div className="client-plan-modal-actions">
+            <button className="secondary-button" type="button" onClick={() => setSubscriptionDetailsOpen(false)}>Close</button>
+            <button className="client-plan-upgrade-button" type="button" onClick={() => { setSubscriptionDetailsOpen(false); setSelectedPlanId(clientPlan.id); setPlanModalOpen(true); }}><Icon name="settings" />Manage plan</button>
+          </div>
+        </section>
+      </div>}
+
+      {planModalOpen && <div className="client-plan-modal-backdrop" role="presentation" onMouseDown={() => setPlanModalOpen(false)}>
+        <section className="client-plan-modal" role="dialog" aria-modal="true" aria-labelledby="client-plan-modal-title" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="client-plan-modal-head">
+            <div><span className="client-plan-modal-icon"><Icon name="money" /></span><div><span>SUBSCRIPTION</span><h2 id="client-plan-modal-title">{hasActiveSubscription ? "Upgrade client plan" : "Activate client plan"}</h2><small>{client.name}</small></div></div>
+            <button className="icon-button" type="button" onClick={() => setPlanModalOpen(false)} aria-label="Close plan popup"><Icon name="close" /></button>
+          </div>
+          <div className="client-plan-modal-body">
+            <div className={`client-subscription-status ${hasActiveSubscription ? "active" : "inactive"}`}><span>Subscription status</span><strong>{hasActiveSubscription ? "Active" : clientPlan ? "Inactive" : "Not assigned"}</strong></div>
+            <p>{hasActiveSubscription ? "Select an active plan to upgrade this client." : "Select an active plan to activate this client subscription."} The plan validity dates will be saved with the assignment.</p>
+            <div className="client-plan-picker">
+              <button className="client-plan-picker-trigger" type="button" onClick={() => setPlanMenuOpen((value) => !value)} aria-expanded={planMenuOpen}>
+                <span><strong>{selectedPlan?.name || clientPlan?.name || "Select a plan"}</strong>{selectedPlan && <small>₹{Number(selectedPlan.price || 0).toLocaleString("en-IN")}/{selectedPlan.billingCycle === "yearly" ? "yr" : selectedPlan.billingCycle === "one_time" ? "one time" : "mo"}</small>}</span>
+                <Icon name={planMenuOpen ? "chevron-down" : "chevron-right"} />
+              </button>
+              {planMenuOpen && <div className="client-plan-picker-menu" role="listbox">
+                {availablePlans.map((plan) => <button className={`client-plan-option ${selectedPlanId === plan.id ? "selected" : ""}`} type="button" key={plan.id} onClick={() => { setSelectedPlanId(plan.id); setPlanMenuOpen(false); }}>
+                  <span><strong>{plan.name}</strong><small>₹{Number(plan.price || 0).toLocaleString("en-IN")}/{plan.billingCycle === "yearly" ? "yr" : plan.billingCycle === "one_time" ? "one time" : "mo"}</small></span>
+                  <Icon name={selectedPlanId === plan.id ? "check" : "chevron-right"} />
+                </button>)}
+                {availablePlans.length === 0 && <span className="client-plan-option-empty">Create an active plan first.</span>}
+              </div>}
+            </div>
+            <div className="client-plan-date-fields">
+              <label><span>Subscription start date</span><input type="date" value={subscriptionStartDate} onChange={(event) => setSubscriptionStartDate(event.target.value)} /></label>
+              <label><span>Subscription end date</span><input type="date" min={subscriptionStartDate || undefined} value={subscriptionEndDate} onChange={(event) => setSubscriptionEndDate(event.target.value)} /></label>
+            </div>
+            {(subscriptionStartDate || subscriptionEndDate) && <div className="client-plan-modal-validity">Validity: {formatDisplayDate(subscriptionStartDate)} – {formatDisplayDate(subscriptionEndDate)}</div>}
+          </div>
+          <div className="client-plan-modal-actions">
+            <button className="secondary-button" type="button" onClick={() => setPlanModalOpen(false)}>Cancel</button>
+            <button className="client-plan-upgrade-button" type="button" disabled={!planChangesPending} onClick={() => void saveClientPlan()}><Icon name="check" />{hasActiveSubscription ? "Save subscription" : "Activate subscription"}</button>
+          </div>
+        </section>
+      </div>}
 
     </section>
   );
@@ -4623,6 +5121,10 @@ function CustomerPortal({ session, onLogout }) {
   const [data, setData] = useState(loadData);
   const [loadError, setLoadError] = useState("");
   const [openInterestListingId, setOpenInterestListingId] = useState(null);
+  const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
+  const [selectedSubscriptionPlanId, setSelectedSubscriptionPlanId] = useState("");
+  const [subscriptionPaymentLoading, setSubscriptionPaymentLoading] = useState(false);
+  const [subscriptionDataReady, setSubscriptionDataReady] = useState(false);
   const visibleNavItems = useMemo(
     () => customerNavItems.filter(([key]) => canOpenSection(data, session.role, key)),
     [data, session.role]
@@ -4646,6 +5148,7 @@ function CustomerPortal({ session, onLogout }) {
       .then((backendData) => {
         if (!active) return;
         setData((current) => JSON.stringify(current) === JSON.stringify(backendData) ? current : backendData);
+        setSubscriptionDataReady(true);
         setLoadError("");
       })
       .catch((error) => {
@@ -4673,6 +5176,15 @@ function CustomerPortal({ session, onLogout }) {
     ?? data.clients.find((c) => c.name?.toLowerCase() === session.name?.toLowerCase())
     ?? clients.find((c) => c.id === session.clientId);
   const customerClientId = myClient?.id ?? session.clientId;
+  const subscriptionFeatureEnabled = data.subscriptionFeatureEnabled !== false;
+  const customerSubscriptionPlans = (data.subscriptionPlans ?? []).filter((plan) => plan.status === "Active");
+  const currentSubscriptionPlan = customerSubscriptionPlans.find((plan) => plan.id === myClient?.subscriptionPlanId);
+
+  useEffect(() => {
+    if (!subscriptionDataReady || !myClient?.id) return;
+    setSelectedSubscriptionPlanId(myClient.subscriptionPlanId || customerSubscriptionPlans[0]?.id || "");
+    setSubscriptionModalOpen(subscriptionFeatureEnabled);
+  }, [myClient?.id, subscriptionFeatureEnabled, subscriptionDataReady]);
 
   const myVehicles = useMemo(
     () => data.vehicles.filter((v) => v.clientId === customerClientId),
@@ -4760,6 +5272,41 @@ function CustomerPortal({ session, onLogout }) {
       return;
     }
     setLoadError(message || "");
+  };
+
+  const activateCustomerSubscription = async () => {
+    if (!selectedSubscriptionPlanId) {
+      setLoadError("Please select a subscription plan first.");
+      return;
+    }
+    setSubscriptionPaymentLoading(true);
+    setLoadError("");
+    try {
+      const response = await fetch(`${API_BASE}/api/customer/subscription/activate`, {
+        method: "POST",
+        headers: authHeaders(session.token, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ planId: selectedSubscriptionPlanId })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Subscription could not be activated.");
+      setData((current) => ({
+        ...current,
+        clients: (current.clients ?? []).map((client) => client.id === result.clientId
+          ? {
+            ...client,
+            subscriptionPlanId: result.subscriptionPlanId,
+            subscriptionStartDate: result.subscriptionStartDate || "",
+            subscriptionEndDate: result.subscriptionEndDate || ""
+          }
+          : client)
+      }));
+      setSubscriptionModalOpen(false);
+      setLoadError(`${result.plan?.name || "Subscription plan"} activated successfully.`);
+    } catch (error) {
+      setLoadError(error.message || "Subscription could not be activated.");
+    } finally {
+      setSubscriptionPaymentLoading(false);
+    }
   };
 
   const markCustomerVehicleSold = async (event, vehicleId) => {
@@ -5022,13 +5569,16 @@ function CustomerPortal({ session, onLogout }) {
             <p>Customer portal</p>
             <h1>{customerNavItems.find(([k]) => k === section)?.[1] ?? "Dashboard"}</h1>
           </div>
-          <div className="customer-profile-pill">
+          <div className="customer-topbar-actions">
+            {subscriptionFeatureEnabled && <button className="customer-subscription-header-button" type="button" onClick={() => { setSelectedSubscriptionPlanId(myClient?.subscriptionPlanId || customerSubscriptionPlans[0]?.id || ""); setSubscriptionModalOpen(true); }}><Icon name="money" /><span>{currentSubscriptionPlan?.name || "Choose plan"}</span><small>{currentSubscriptionPlan ? "Active" : "Not active"}</small></button>}
+            <div className="customer-profile-pill">
             <span className="customer-avatar-badge">{(myClient?.name ?? session.name).slice(0, 1)}</span>
             <div>
               <strong>{myClient?.name ?? session.name}</strong>
               <small>{myClient?.city ?? ""}</small>
             </div>
             <span className="customer-profile-caret" aria-hidden="true"><Icon name="chevron-down" /></span>
+            </div>
           </div>
         </header>
 
@@ -5060,7 +5610,55 @@ function CustomerPortal({ session, onLogout }) {
           <CustomerInterestChats interests={data.marketplaceInterests ?? []} initialListingId={openInterestListingId} onSend={sendMarketplaceInterestMessage} />
         )}
       </section>
+      {subscriptionModalOpen && subscriptionFeatureEnabled && (
+        <CustomerSubscriptionModal
+          client={myClient}
+          plans={customerSubscriptionPlans}
+          currentPlan={currentSubscriptionPlan}
+          selectedPlanId={selectedSubscriptionPlanId}
+          setSelectedPlanId={setSelectedSubscriptionPlanId}
+          onClose={() => setSubscriptionModalOpen(false)}
+          onActivate={() => void activateCustomerSubscription()}
+          loading={subscriptionPaymentLoading}
+        />
+      )}
     </main>
+  );
+}
+
+function CustomerSubscriptionModal({ client, plans, currentPlan, selectedPlanId, setSelectedPlanId, onClose, onActivate, loading }) {
+  const selectedPlan = plans.find((plan) => plan.id === selectedPlanId);
+  const startDate = todayInputDate();
+  const endDate = selectedPlan ? calculateSubscriptionEndDate(startDate, selectedPlan.billingCycle) : "";
+  const formatPrice = (plan) => `₹${Number(plan.price || 0).toLocaleString("en-IN")}${plan.billingCycle === "monthly" ? "/mo" : plan.billingCycle === "yearly" ? "/yr" : ""}`;
+
+  return (
+    <div className="client-plan-modal-backdrop" role="presentation">
+      <section className="client-plan-modal customer-subscription-modal" role="dialog" aria-modal="true" aria-labelledby="customer-subscription-title">
+        <div className="client-plan-modal-head">
+          <div><span className="client-plan-modal-icon"><Icon name="money" /></span><div><span>SUBSCRIPTION</span><h2 id="customer-subscription-title">{currentPlan ? "Manage your plan" : "Activate your plan"}</h2><small>{client?.name || "Customer"}</small></div></div>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="Close subscription popup"><Icon name="close" /></button>
+        </div>
+        <div className="client-plan-modal-body">
+          <div className={`client-subscription-status ${currentPlan ? "active" : "inactive"}`}><span>Subscription status</span><strong>{currentPlan ? `Active · ${currentPlan.name}` : "Not active"}</strong></div>
+          <p>Select a plan below. After payment confirmation, your plan and vehicle limit will be activated immediately in your account.</p>
+          <div className="customer-subscription-plan-grid">
+            {plans.map((plan) => (
+              <button className={`customer-subscription-plan-option ${selectedPlanId === plan.id ? "selected" : ""}`} type="button" key={plan.id} onClick={() => setSelectedPlanId(plan.id)}>
+                <span><strong>{plan.name}</strong><small>{formatPrice(plan)} · Up to {plan.maxVehicles} vehicle{plan.maxVehicles === 1 ? "" : "s"}</small>{plan.description && <em>{plan.description}</em>}</span>
+                <Icon name={selectedPlanId === plan.id ? "check" : "chevron-right"} />
+              </button>
+            ))}
+            {plans.length === 0 && <div className="client-plan-option-empty">No active plans are available right now. Please contact Admin.</div>}
+          </div>
+          {selectedPlan && <div className="customer-subscription-validity"><span>Starts today</span><strong>{formatDisplayDate(startDate)} – {formatDisplayDate(endDate)}</strong></div>}
+        </div>
+        <div className="client-plan-modal-actions">
+          <button className="secondary-button" type="button" onClick={onClose} disabled={loading}>Later</button>
+          <button className="client-plan-upgrade-button customer-subscription-pay-button" type="button" disabled={!selectedPlan || loading} onClick={onActivate}><Icon name="check" />{loading ? "Activating..." : currentPlan ? `Pay & upgrade · ${formatPrice(selectedPlan || currentPlan)}` : `Pay & activate · ${formatPrice(selectedPlan)}`}</button>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -6052,6 +6650,35 @@ function formatDisplayDate(value) {
     if (monthIndex >= 0) return `${day.padStart(2, "0")}-${String(monthIndex + 1).padStart(2, "0")}-${year.length === 2 ? `20${year}` : year}`;
   }
   return text;
+}
+
+function todayInputDate() {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+}
+
+function calculateSubscriptionEndDate(startDate, billingCycle = "monthly") {
+  const text = String(startDate || "").slice(0, 10);
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const date = new Date(year, month, 1);
+  if (billingCycle === "yearly") date.setFullYear(date.getFullYear() + 1);
+  else if (billingCycle === "monthly") date.setMonth(date.getMonth() + 1);
+  else return text;
+  const lastDayOfTargetMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  date.setDate(Math.min(day, lastDayOfTargetMonth));
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function isSubscriptionCurrentlyActive(client, plan) {
+  if (!client || !plan || String(plan.status).toLowerCase() !== "active") return false;
+  const today = todayInputDate();
+  const startDate = String(client.subscriptionStartDate || "").slice(0, 10);
+  const endDate = String(client.subscriptionEndDate || "").slice(0, 10);
+  return (!startDate || startDate <= today) && (!endDate || endDate >= today);
 }
 
 function parseDisplayDate(value) {

@@ -2308,6 +2308,89 @@ button:disabled {
   text-transform: none;
 }
 
+.client-form select {
+  background: #1D3A66;
+  border: 1px solid #2A476F;
+  border-radius: 9px;
+  color: #F0A500;
+  font-size: 14px;
+  font-weight: 800;
+  min-height: 44px;
+  padding: 10px 12px;
+}
+
+.client-form select:focus {
+  background: #0F2240;
+  border-color: #F5A623;
+  outline: none;
+}
+
+.client-form-wide { grid-column: 1 / -1; }
+.client-plan-create-legacy { display: none !important; }
+.client-plan-empty { color: #F0A500; font-size: 12px; margin: 0; }
+.client-plan-pill { color: #F0A500; font-size: 12px; font-weight: 800; }
+
+.client-plan-picker { position: relative; }
+:is(.client-form, .client-plan-upgrade, .client-plan-modal) .client-plan-picker-trigger {
+  align-items: center;
+  background: #1D3A66;
+  border: 1px solid #F5A623;
+  border-radius: 9px;
+  color: #F0A500;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  min-height: 46px;
+  padding: 8px 12px;
+  text-align: left;
+  width: 100%;
+}
+:is(.client-form, .client-plan-upgrade, .client-plan-modal) .client-plan-picker-trigger > span { display: grid; gap: 2px; }
+:is(.client-form, .client-plan-upgrade, .client-plan-modal) .client-plan-picker-trigger strong { color: #F0A500; font-size: 14px; }
+:is(.client-form, .client-plan-upgrade, .client-plan-modal) .client-plan-picker-trigger small { color: #C3D2E5; font-size: 11px; font-weight: 700; }
+:is(.client-form, .client-plan-upgrade, .client-plan-modal) .client-plan-picker-trigger .icon { height: 17px; width: 17px; }
+.client-plan-picker-menu {
+  background: #0B1C35;
+  border: 1px solid #F5A623;
+  border-radius: 10px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, .35);
+  display: grid;
+  gap: 5px;
+  left: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 7px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+}
+:is(.client-form, .client-plan-upgrade, .client-plan-modal) .client-plan-option {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #DCEBFF;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  min-height: 54px;
+  padding: 8px 10px;
+  text-align: left;
+  width: 100%;
+}
+:is(.client-form, .client-plan-upgrade, .client-plan-modal) .client-plan-option:hover,
+:is(.client-form, .client-plan-upgrade, .client-plan-modal) .client-plan-option.selected { background: #1D3A66; border-color: #3A6796; }
+:is(.client-form, .client-plan-upgrade, .client-plan-modal) .client-plan-option > span { display: grid; gap: 3px; }
+:is(.client-form, .client-plan-upgrade, .client-plan-modal) .client-plan-option strong { color: #F5F8FD; font-size: 13px; }
+:is(.client-form, .client-plan-upgrade, .client-plan-modal) .client-plan-option small { color: #AFC6DF; font-size: 10px; font-weight: 700; }
+:is(.client-form, .client-plan-upgrade, .client-plan-modal) .client-plan-option .icon { color: #F0A500; height: 15px; width: 15px; }
+.client-plan-option-empty,
+.client-plan-selection-hint { color: #9DB7D7; font-size: 11px; }
+.client-plan-option-empty { padding: 8px 10px; }
+.client-plan-selection-hint { display: block; margin-top: 6px; text-transform: none; }
+.client-plan-native-fallback { display: none; }
+
 .client-form input:focus {
   background: #0F2240;
   border-color: #F5A623;
@@ -2568,6 +2651,175 @@ button:disabled {
 .client-modal .client-form {
   margin-top: 16px;
 }
+
+.client-profile-plan {
+  align-items: center;
+  background: rgba(240, 165, 0, .12);
+  border: 1px solid rgba(240, 165, 0, .5);
+  border-radius: 999px;
+  color: #F0A500;
+  display: inline-flex;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 7px 11px;
+  width: fit-content;
+}
+
+.client-profile-plan .icon { height: 15px; width: 15px; }
+.client-profile-plan span { color: #B9CBE0; font-size: 11px; }
+.client-profile-plan strong { font-size: 12px; }
+.client-profile-plan em { border-radius: 999px; font-size: 9px; font-style: normal; font-weight: 900; padding: 3px 6px; text-transform: uppercase; }
+.client-profile-plan em.active { background: rgba(52, 211, 153, .14); color: #6EE7B7; }
+.client-profile-plan em.inactive { background: rgba(255, 113, 130, .14); color: #FF9AA7; }
+.client-profile-plan-button { cursor: pointer; text-align: left; }
+.client-profile-plan-button > .icon:last-child { margin-left: 2px; }
+.client-profile-plan-dates { color: #9DB7D7; display: block; font-size: 11px; margin-top: 5px; }
+.client-profile-subscription-details-button {
+  align-items: center;
+  background: rgba(58, 103, 150, .16);
+  border: 1px solid #3A6796;
+  border-radius: 8px;
+  color: #CFE3F8;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  gap: 6px;
+  margin-top: 8px;
+  min-height: 32px;
+  padding: 6px 10px;
+}
+.client-profile-subscription-details-button:hover { background: #1D3A66; border-color: #F5A623; color: #F5A623; }
+.client-profile-subscription-details-button .icon { height: 14px; width: 14px; }
+.client-plan-upgrade { display: none !important;
+  background: rgba(29, 58, 102, .58);
+  border: 1px solid #3A6796;
+  border-radius: 12px;
+  gap: 9px;
+  margin-top: 12px;
+  max-width: 360px;
+  padding: 11px;
+}
+.client-plan-upgrade-heading { display: grid; gap: 3px; }
+.client-plan-upgrade-heading strong { color: #F0A500; font-size: 12px; }
+.client-plan-upgrade-heading span { color: #9DB7D7; font-size: 10px; }
+.client-plan-upgrade .client-plan-picker-trigger { min-height: 40px; }
+.client-plan-upgrade-button {
+  align-items: center;
+  background: #F0A500;
+  border: 0;
+  border-radius: 8px;
+  color: #0B1C35;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 900;
+  gap: 6px;
+  justify-content: center;
+  min-height: 35px;
+  padding: 8px 12px;
+}
+.client-plan-upgrade-button:disabled { cursor: not-allowed; opacity: .45; }
+.client-plan-upgrade-button .icon { height: 14px; width: 14px; }
+
+.client-plan-modal-backdrop {
+  align-items: center;
+  background: rgba(2, 10, 22, .72);
+  backdrop-filter: blur(4px);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 20px;
+  position: fixed;
+  z-index: 120;
+}
+.client-plan-modal {
+  background: linear-gradient(#0F2240, #0F2240) padding-box, linear-gradient(135deg, #F5A623, #3A6796 48%, #34D399) border-box;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  box-shadow: 0 28px 80px rgba(2, 10, 22, .62);
+  max-width: 460px;
+  padding: 18px;
+  width: 100%;
+}
+.client-plan-modal-head,
+.client-plan-modal-head > div:first-child,
+.client-plan-modal-actions { align-items: center; display: flex; }
+.client-plan-modal-head,
+.client-plan-modal-actions { justify-content: space-between; }
+.client-plan-modal-head { border-bottom: 1px solid #2A476F; gap: 12px; padding-bottom: 13px; }
+.client-plan-modal-head > div:first-child { gap: 10px; }
+.client-plan-modal-icon { align-items: center; background: #1D3A66; border: 1px solid #F5A623; border-radius: 10px; color: #F5A623; display: grid; height: 40px; place-items: center; width: 40px; }
+.client-plan-modal-icon .icon { height: 18px; width: 18px; }
+.client-plan-modal-head h2 { color: #F0A500; font-size: 19px; margin: 2px 0 0; }
+.client-plan-modal-head div div > span { color: #F0A500; display: block; font-size: 10px; font-weight: 900; }
+.client-plan-modal-head small { color: #9DB7D7; display: block; font-size: 11px; margin-top: 3px; }
+.client-plan-modal-body { display: grid; gap: 10px; padding: 16px 0; }
+.client-plan-modal-body > p { color: #B9CBE0; font-size: 12px; line-height: 1.45; margin: 0; }
+.client-subscription-status { align-items: center; border-radius: 8px; display: flex; justify-content: space-between; padding: 8px 10px; }
+.client-subscription-status span { color: #B9CBE0; font-size: 11px; }
+.client-subscription-status strong { font-size: 11px; text-transform: uppercase; }
+.client-subscription-status.active { background: rgba(52, 211, 153, .12); border: 1px solid rgba(52, 211, 153, .35); }
+.client-subscription-status.active strong { color: #6EE7B7; }
+.client-subscription-status.inactive { background: rgba(255, 166, 35, .12); border: 1px solid rgba(255, 166, 35, .38); }
+.client-subscription-status.inactive strong { color: #F0A500; }
+.client-plan-modal-body .client-plan-picker-trigger { min-height: 47px; }
+.client-plan-date-fields { display: grid; gap: 9px; grid-template-columns: 1fr 1fr; }
+.client-plan-date-fields label { color: #DCEBFF; display: grid; font-size: 10px; font-weight: 900; gap: 5px; text-transform: uppercase; }
+.client-plan-date-fields input { background: #0B1C35; border: 1px solid #3A6796; border-radius: 8px; color: #F5F8FD; font-size: 12px; min-height: 38px; padding: 8px 9px; }
+.client-plan-date-fields input:focus { border-color: #F5A623; box-shadow: 0 0 0 3px rgba(245, 166, 35, .12); outline: none; }
+.client-plan-modal-validity { color: #9DB7D7; font-size: 11px; }
+.client-plan-modal-actions { gap: 9px; justify-content: flex-end; }
+.client-plan-modal .icon-button {
+  align-items: center;
+  background: #1D3A66;
+  border: 1px solid #3A6796;
+  border-radius: 9px;
+  color: #DCEBFF;
+  cursor: pointer;
+  display: grid;
+  height: 36px;
+  place-items: center;
+  width: 36px;
+}
+.client-plan-modal .icon-button:hover { background: #284D7D; border-color: #F5A623; color: #F5A623; }
+.client-plan-modal-actions .secondary-button {
+  background: #102744;
+  border: 1px solid #3A6796;
+  border-radius: 8px;
+  color: #DCEBFF;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  min-height: 38px;
+  padding: 8px 15px;
+}
+.client-plan-modal-actions .secondary-button:hover { border-color: #F5A623; color: #F5A623; }
+.client-plan-modal-actions .client-plan-upgrade-button { min-width: 165px; }
+.client-subscription-details-modal { max-width: 520px; }
+.client-subscription-details-body { display: grid; gap: 14px; padding: 16px 0; }
+.client-subscription-details-status { align-items: center; background: rgba(52, 211, 153, .1); border: 1px solid rgba(52, 211, 153, .35); border-radius: 9px; display: flex; justify-content: space-between; padding: 10px 12px; }
+.client-subscription-details-status span { color: #B9CBE0; font-size: 12px; }
+.client-subscription-details-status strong { font-size: 12px; text-transform: uppercase; }
+.client-subscription-details-status strong.active { color: #6EE7B7; }
+.client-subscription-details-status strong.inactive { color: #FF9AA7; }
+.client-subscription-details-grid { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.client-subscription-details-grid > div { background: #0B1C35; border: 1px solid #294C75; border-radius: 9px; display: grid; gap: 4px; padding: 11px 12px; }
+.client-subscription-details-grid span { color: #8FA7C9; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.client-subscription-details-grid strong { color: #F5F8FD; font-size: 13px; }
+.customer-subscription-modal { max-width: 560px; }
+.customer-subscription-plan-grid { display: grid; gap: 8px; max-height: 260px; overflow: auto; }
+.customer-subscription-plan-option { align-items: center; background: #0B1C35; border: 1px solid #2A476F; border-radius: 10px; color: #F5F8FD; cursor: pointer; display: flex; gap: 12px; justify-content: space-between; padding: 11px 12px; text-align: left; width: 100%; }
+.customer-subscription-plan-option:hover,
+.customer-subscription-plan-option.selected { background: #1D3A66; border-color: #F5A623; box-shadow: 0 0 0 2px rgba(245, 166, 35, .1); }
+.customer-subscription-plan-option > span { display: grid; gap: 3px; min-width: 0; }
+.customer-subscription-plan-option strong { color: #F5F8FD; font-size: 14px; }
+.customer-subscription-plan-option small { color: #F0A500; font-size: 11px; font-weight: 800; }
+.customer-subscription-plan-option em { color: #9DB7D7; font-size: 11px; font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.customer-subscription-plan-option .icon { color: #F0A500; flex: 0 0 auto; height: 17px; width: 17px; }
+.customer-subscription-validity { align-items: center; background: rgba(52, 211, 153, .08); border: 1px solid rgba(52, 211, 153, .3); border-radius: 9px; color: #B9CBE0; display: flex; font-size: 11px; justify-content: space-between; padding: 9px 11px; }
+.customer-subscription-validity strong { color: #6EE7B7; font-size: 12px; }
+.customer-subscription-pay-button { min-width: 205px; }
 
 .client-modal-actions {
   gap: 8px;
@@ -7036,6 +7288,351 @@ textarea {
   width: 100%;
 }
 
+/* Client profile hero polish */
+.profile-hero {
+  align-items: stretch;
+  background:
+    radial-gradient(520px 190px at 20% 0%, rgba(58, 103, 150, .28), transparent 72%),
+    linear-gradient(135deg, #122D50 0%, #0F2240 54%, #0A1A32 100%);
+  border: 1px solid rgba(92, 165, 238, .42);
+  border-radius: 20px;
+  box-shadow: 0 20px 46px rgba(2, 10, 22, .3), inset 0 1px 0 rgba(255, 255, 255, .05);
+  gap: 20px;
+  grid-template-columns: minmax(150px, 164px) minmax(0, 1fr) minmax(220px, 250px);
+  min-height: 150px;
+  padding: 22px 24px;
+}
+
+.profile-hero::before {
+  background: linear-gradient(180deg, #F5A623, #34D399);
+  border-radius: 20px 0 0 20px;
+  width: 4px;
+}
+
+.profile-hero::after {
+  background:
+    radial-gradient(340px 180px at 100% 0%, rgba(58, 103, 150, .2), transparent 72%),
+    radial-gradient(300px 160px at 78% 100%, rgba(240, 165, 0, .08), transparent 72%);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.profile-hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+.profile-hero-actions {
+  align-self: center;
+  border-right: 1px solid rgba(92, 165, 238, .24);
+  justify-content: center;
+  min-width: 0;
+  padding: 8px 24px 8px 0;
+}
+
+.profile-hero-actions .ghost-action {
+  min-height: 36px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.profile-identity {
+  align-items: flex-start;
+  gap: 16px;
+  justify-self: center;
+  max-width: 760px;
+  width: 100%;
+}
+
+.profile-avatar {
+  background: linear-gradient(145deg, #173A64, #081426);
+  border: 1px solid rgba(92, 165, 238, .4);
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), 0 12px 24px rgba(2, 10, 22, .35);
+  font-size: 28px;
+  height: 66px;
+  margin-top: 8px;
+  width: 66px;
+}
+
+.profile-copy {
+  align-content: center;
+  display: grid;
+  gap: 0;
+  justify-items: start;
+  width: 100%;
+}
+
+.profile-main-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.profile-main-heading {
+  min-width: 0;
+}
+
+.profile-main-heading p {
+  margin-bottom: 0;
+}
+
+.profile-client-status {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  display: inline-flex !important;
+  flex: 0 0 auto;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+  gap: 6px;
+  letter-spacing: .03em !important;
+  margin-top: 7px;
+  padding: 7px 10px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.profile-client-status .icon {
+  height: 13px;
+  width: 13px;
+}
+
+.profile-client-status.active {
+  background: rgba(52, 211, 153, .12);
+  border-color: rgba(52, 211, 153, .34);
+  color: #6EE7B7 !important;
+}
+
+.profile-client-status.inactive {
+  background: rgba(240, 165, 0, .12);
+  border-color: rgba(240, 165, 0, .36);
+  color: #F5C15A !important;
+}
+
+.profile-identity span {
+  color: #AFC6DF;
+  font-size: 10px;
+  letter-spacing: .08em;
+}
+
+.profile-identity h2 {
+  font-size: clamp(24px, 2.2vw, 32px);
+  letter-spacing: -.02em;
+}
+
+.profile-identity p {
+  color: #D2E2F2;
+  font-size: 12px;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.client-profile-plan {
+  background: linear-gradient(135deg, rgba(29, 58, 102, .84), rgba(15, 34, 64, .9));
+  border-color: rgba(92, 165, 238, .34);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 10px 18px rgba(2, 10, 22, .16);
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto 16px;
+  gap: 9px;
+  margin-top: 9px;
+  max-width: 100%;
+  min-height: 62px;
+  padding: 10px 13px;
+  width: 100%;
+}
+
+.profile-identity .client-profile-plan-icon {
+  align-items: center;
+  background: rgba(240, 165, 0, .14);
+  border: 1px solid rgba(240, 165, 0, .45);
+  border-radius: 11px;
+  color: #F5A623;
+  display: grid;
+  height: 36px;
+  justify-content: center;
+  line-height: 0;
+  place-items: center;
+  width: 36px;
+}
+
+.profile-identity .client-profile-plan-icon .icon {
+  height: 17px;
+  width: 17px;
+}
+
+.profile-identity .client-profile-plan-copy {
+  align-content: center;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.client-profile-plan-copy small {
+  color: #9DB7D7;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.client-profile-plan-copy strong {
+  color: #F2F7FC;
+  font-size: 15px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.client-profile-plan > em {
+  align-self: center;
+}
+
+.client-profile-plan-button > .icon:last-child {
+  align-self: center;
+  margin-left: 0;
+}
+
+.client-profile-plan-dates {
+  align-items: center;
+  display: inline-flex;
+  font-size: 10px;
+  margin: 7px 8px 0 2px;
+  min-height: 26px;
+}
+
+.client-profile-subscription-meta {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  justify-content: space-between;
+  margin-top: 8px;
+  width: 100%;
+}
+
+.client-profile-subscription-meta .client-profile-plan-dates {
+  margin: 0;
+}
+
+.client-profile-subscription-details-button {
+  justify-content: center;
+  justify-self: start;
+  margin-top: 0;
+  min-height: 30px;
+  min-width: 230px;
+  padding: 6px 10px;
+  vertical-align: middle;
+  width: auto;
+}
+
+.profile-total {
+  align-self: center;
+  background: linear-gradient(145deg, rgba(5, 18, 37, .92), rgba(7, 22, 43, .76));
+  border: 1px solid rgba(92, 165, 238, .16);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 14px 28px rgba(2, 10, 22, .22);
+  min-height: 88px;
+  min-width: 0;
+  padding: 16px 18px;
+}
+
+.profile-total::after {
+  background: linear-gradient(90deg, #F5A623, #34D399);
+  border-radius: 999px;
+  content: "";
+  height: 3px;
+  left: 18px;
+  opacity: .75;
+  position: absolute;
+  right: 18px;
+  top: 0;
+}
+
+.profile-total strong {
+  color: #F4F8FC;
+  font-size: 23px;
+  margin-top: 6px;
+}
+
+@media (max-width: 980px) {
+  .profile-hero {
+    grid-template-columns: minmax(128px, 145px) minmax(0, 1fr);
+  }
+
+  .profile-total {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 680px) {
+  .profile-hero {
+    gap: 16px;
+    grid-template-columns: 1fr;
+    min-height: 0;
+    padding: 18px;
+  }
+
+  .profile-hero-actions {
+    display: flex;
+    flex-direction: row;
+    border-right: 0;
+    border-bottom: 1px solid rgba(92, 165, 238, .24);
+    padding: 0;
+    padding-bottom: 14px;
+  }
+
+  .profile-hero-actions .ghost-action {
+    flex: 1;
+  }
+
+  .profile-identity {
+    align-items: flex-start;
+  }
+
+  .profile-main-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .profile-client-status {
+    margin-top: 0;
+  }
+
+  .client-profile-subscription-meta {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .profile-avatar {
+    margin-top: 4px;
+  }
+
+  .profile-total {
+    grid-column: auto;
+    width: 100%;
+  }
+
+  .profile-identity p {
+    white-space: normal;
+  }
+
+  .client-profile-subscription-details-button {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
 @media (max-width: 680px) {
   .profile-hero-actions,
   .common-password-form {
@@ -7057,7 +7654,8 @@ textarea {
   }
 
   .profile-hero-actions {
-    display: grid;
+    display: flex;
+    flex-direction: row;
   }
 
 .common-password-form button {
@@ -11494,6 +12092,12 @@ textarea {
 }
 
 /* Refined customer profile control for the workspace header. */
+.customer-topbar-actions { align-items: center; display: flex; gap: 10px; }
+.customer-subscription-header-button { align-items: center; background: rgba(240, 165, 0, .1); border: 1px solid rgba(240, 165, 0, .55); border-radius: 12px; color: #F5F8FD; cursor: pointer; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 8px; min-width: 150px; padding: 8px 11px; text-align: left; }
+.customer-subscription-header-button:hover { background: rgba(240, 165, 0, .18); border-color: #F0A500; }
+.customer-subscription-header-button > .icon { color: #F0A500; grid-row: 1 / span 2; height: 17px; width: 17px; }
+.customer-subscription-header-button span { color: #F5F8FD; font-size: 11px; font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.customer-subscription-header-button small { color: #F0A500; font-size: 9px; font-weight: 900; text-transform: uppercase; }
 .customer-profile-pill {
   background: linear-gradient(135deg, #142f54 0%, #0e2341 100%);
   border: 1px solid #355f8f;
@@ -11564,6 +12168,8 @@ textarea {
 }
 
 @media (max-width: 680px) {
+  .customer-topbar-actions { align-items: stretch; flex-direction: column; width: min(248px, 100%); }
+  .customer-subscription-header-button { width: 100%; }
   .customer-profile-pill {
     min-width: 0;
     width: min(248px, 100%);
@@ -13145,6 +13751,256 @@ textarea {
     align-items: stretch;
     flex-direction: column;
   }
+}
+
+/* Subscription plan management */
+.subscription-plans-page {
+  display: grid;
+  gap: 18px;
+}
+
+.subscription-plans-hero,
+.subscription-create-card,
+.subscription-plan-list-card {
+  background: linear-gradient(145deg, #10294b 0%, #0c1d37 100%);
+  border: 1px solid #2a476f;
+  border-radius: 18px;
+  box-shadow: 0 18px 42px rgba(2, 10, 22, 0.25);
+}
+
+.subscription-plans-hero {
+  align-items: center;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  padding: 24px;
+}
+
+.subscription-plans-hero h2,
+.subscription-section-heading h3 {
+  color: #f5f8fd;
+  margin: 5px 0 4px;
+}
+
+.subscription-plans-hero h2 { font-size: 25px; }
+.subscription-plans-hero p,
+.subscription-section-heading p { color: #9db2ce; margin: 0; }
+
+.subscription-feature-control {
+  align-items: center;
+  background: #0f2240;
+  border: 1px solid #2a476f;
+  border-radius: 14px;
+  display: flex;
+  gap: 13px;
+  padding: 14px 16px;
+}
+.subscription-feature-control.enabled { border-color: rgba(52, 211, 153, .55); }
+.subscription-feature-control.disabled { border-color: rgba(255, 166, 35, .55); }
+.subscription-feature-control-icon { align-items: center; background: #1d3a66; border: 1px solid #3a6796; border-radius: 10px; color: #f0a500; display: grid; flex: 0 0 38px; height: 38px; place-items: center; width: 38px; }
+.subscription-feature-control-icon .icon { height: 17px; width: 17px; }
+.subscription-feature-control-copy { flex: 1; min-width: 0; }
+.subscription-feature-control-copy > span { color: #f0a500; font-size: 10px; font-weight: 900; letter-spacing: .04em; }
+.subscription-feature-control-copy h3 { color: #f5f8fd; font-size: 15px; margin: 2px 0; }
+.subscription-feature-control-copy p { color: #9db2ce; font-size: 11px; margin: 0; }
+.subscription-feature-toggle { align-items: center; align-self: center; background: #26364c; border: 1px solid #53667f; border-radius: 999px; color: #c9d6e6; cursor: pointer; display: inline-flex; flex: 0 0 auto; gap: 8px; height: 34px; justify-content: center; line-height: 1; min-height: 34px; padding: 4px 8px 4px 11px; vertical-align: middle; }
+.subscription-feature-toggle span { font-size: 10px; font-weight: 900; line-height: 18px; min-width: 20px; }
+.subscription-feature-toggle i { background: #8da0b7; border-radius: 50%; display: block; flex: 0 0 18px; height: 18px; width: 18px; }
+.subscription-feature-control.enabled .subscription-feature-toggle { background: rgba(52, 211, 153, .14); border-color: rgba(52, 211, 153, .6); color: #6ee7b7; }
+.subscription-feature-control.enabled .subscription-feature-toggle i { background: #34d399; }
+.subscription-feature-control.disabled .subscription-feature-toggle { color: #f0a500; }
+.subscription-feature-control.disabled .subscription-feature-toggle i { background: #f0a500; }
+
+.subscription-create-button,
+.subscription-save-button,
+.subscription-cancel-button {
+  align-items: center;
+  border-radius: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 800;
+  gap: 8px;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 16px;
+  white-space: nowrap;
+}
+
+.subscription-create-button,
+.subscription-save-button {
+  background: #f0a500;
+  border: 1px solid #f0a500;
+  color: #15243a;
+}
+
+.subscription-cancel-button {
+  background: transparent;
+  border: 1px solid #466589;
+  color: #d8e4f2;
+}
+
+.subscription-create-card,
+.subscription-plan-list-card { padding: 22px; }
+
+.subscription-section-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.subscription-section-heading > div > span,
+.subscription-plan-status {
+  color: #f0a500;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.subscription-section-heading h3 { font-size: 20px; }
+.subscription-database-pill,
+.subscription-count-pill {
+  align-items: center;
+  background: rgba(240, 165, 0, .12);
+  border: 1px solid rgba(240, 165, 0, .5);
+  border-radius: 999px;
+  color: #f0a500;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 6px;
+  padding: 8px 11px;
+  white-space: nowrap;
+}
+
+.subscription-plan-form {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.subscription-plan-form label {
+  display: grid;
+  gap: 7px;
+}
+
+.subscription-plan-form label > span {
+  color: #dce8f6;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.subscription-plan-form label small { color: #8fa7c9; font-weight: 600; }
+.subscription-plan-form input,
+.subscription-plan-form select,
+.subscription-plan-form textarea {
+  background: #0a1930;
+  border: 1px solid #355579;
+  border-radius: 9px;
+  color: #f5f8fd;
+  font: inherit;
+  min-height: 42px;
+  padding: 10px 12px;
+  width: 100%;
+}
+
+.subscription-plan-form textarea { min-height: 86px; resize: vertical; }
+.subscription-plan-form input:focus,
+.subscription-plan-form select:focus,
+.subscription-plan-form textarea:focus { border-color: #f0a500; outline: 2px solid rgba(240, 165, 0, .16); }
+.subscription-form-wide { grid-column: 1 / -1; }
+.subscription-form-actions { display: flex; gap: 10px; justify-content: flex-end; padding-top: 4px; }
+
+.subscription-plan-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 420px));
+}
+
+.subscription-plan-card {
+  background: linear-gradient(155deg, #10294b 0%, #091a31 62%, #08162a 100%);
+  border: 1px solid #315884;
+  border-radius: 14px;
+  display: grid;
+  gap: 13px;
+  overflow: hidden;
+  padding: 18px;
+  position: relative;
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+}
+.subscription-plan-card::before { background: linear-gradient(90deg, #f0a500, #f5c451 45%, #4cc9a0); content: ""; height: 3px; left: 0; position: absolute; right: 0; top: 0; }
+.subscription-plan-card:hover { border-color: #4d7fac; box-shadow: 0 18px 36px rgba(2, 10, 22, .3); transform: translateY(-2px); }
+
+.subscription-plan-card-head { align-items: flex-start; display: flex; gap: 12px; justify-content: space-between; padding-top: 2px; }
+.subscription-plan-card h4 { color: #f5f8fd; font-size: 22px; letter-spacing: -.02em; margin: 7px 0 0; }
+.subscription-plan-card-head > strong { background: rgba(240, 165, 0, .12); border: 1px solid rgba(240, 165, 0, .4); border-radius: 9px; color: #f6b51d; font-size: 17px; padding: 7px 9px; white-space: nowrap; }
+.subscription-plan-status { align-items: center; background: rgba(52, 211, 153, .12); border: 1px solid rgba(52, 211, 153, .35); border-radius: 999px; color: #6ee7b7; display: inline-flex; font-size: 10px; font-weight: 900; gap: 6px; letter-spacing: .04em; padding: 4px 8px; }
+.subscription-plan-status::before { background: currentColor; border-radius: 50%; content: ""; height: 6px; width: 6px; }
+.subscription-plan-description { color: #a9bdd5; font-size: 13px; line-height: 1.5; margin: 0; min-height: 40px; }
+.subscription-plan-limits { background: rgba(17, 43, 76, .72); border: 1px solid #274b73; border-radius: 10px; display: flex; gap: 12px; padding: 11px 12px; }
+.subscription-plan-limits span { color: #8fa7c9; font-size: 11px; }
+.subscription-plan-limits strong { color: #eef4fb; display: block; font-size: 18px; line-height: 1.1; margin-bottom: 2px; }
+.subscription-plan-metrics { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
+.subscription-plan-limits span,
+.subscription-plan-subscribers span { display: grid; gap: 2px; }
+.subscription-plan-limits small,
+.subscription-plan-subscribers small { color: #8fa7c9; font-size: 10px; font-weight: 700; }
+.subscription-plan-subscribers { align-items: center; background: rgba(52, 211, 153, .1); border: 1px solid rgba(52, 211, 153, .34); border-radius: 10px; color: #6ee7b7; display: flex; gap: 9px; padding: 10px 11px; }
+.subscription-plan-subscribers .icon { flex: 0 0 18px; height: 18px; width: 18px; }
+.subscription-plan-subscribers strong { color: #f5f8fd; display: block; font-size: 18px; line-height: 1.1; }
+.subscription-plan-dates { border-bottom: 1px solid #203d61; display: grid; gap: 8px; grid-template-columns: 1fr 1fr; padding: 0 0 12px; }
+.subscription-plan-dates span { color: #8fa7c9; font-size: 11px; }
+.subscription-plan-dates strong { color: #dce8f6; display: block; font-size: 11px; margin-bottom: 2px; }
+.subscription-plan-card ul { display: grid; gap: 7px; list-style: none; margin: 0; padding: 0; }
+.subscription-plan-card li { align-items: flex-start; color: #d8e4f2; display: flex; font-size: 12px; gap: 7px; }
+.subscription-plan-card li .icon { color: #55d6a1; flex: 0 0 15px; height: 15px; width: 15px; }
+.subscription-plan-slug { background: #08172b; border: 1px solid #203d61; border-radius: 7px; color: #86a4c7; display: inline-block; font-size: 11px; overflow-wrap: anywhere; padding: 6px 8px; width: fit-content; }
+.subscription-plan-actions { display: flex; gap: 8px; padding-top: 2px; }
+.subscription-edit-button,
+.subscription-delete-button {
+  align-items: center;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 1;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 6px;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 10px;
+}
+.subscription-edit-button { border: 1px solid #3a6796; color: #b9d9f1; }
+.subscription-delete-button { border: 1px solid rgba(180, 35, 56, .7); color: #ff9aa7; }
+.subscription-edit-button:hover { background: rgba(58, 103, 150, .2); border-color: #7db7e9; }
+.subscription-delete-button:hover { background: rgba(180, 35, 56, .16); border-color: #ff7182; }
+.subscription-plan-actions .icon { height: 15px; width: 15px; }
+
+.subscription-empty { align-items: center; color: #9db2ce; display: grid; gap: 7px; justify-items: center; padding: 42px 16px; text-align: center; }
+.subscription-empty .icon { color: #f0a500; height: 28px; width: 28px; }
+.subscription-empty strong { color: #f5f8fd; }
+
+@media (max-width: 980px) {
+  .subscription-plan-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 680px) {
+  .subscription-plans-hero,
+  .subscription-section-heading { align-items: stretch; flex-direction: column; }
+  .subscription-create-button { width: 100%; }
+  .subscription-plan-form,
+  .subscription-plan-grid,
+  .subscription-plan-metrics { grid-template-columns: 1fr; }
+  .subscription-form-wide { grid-column: auto; }
+  .subscription-form-actions { flex-direction: column-reverse; }
+  .subscription-form-actions button { width: 100%; }
+  .client-plan-date-fields { grid-template-columns: 1fr; }
+  .customer-subscription-validity { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .customer-subscription-modal .client-plan-modal-actions { align-items: stretch; flex-direction: column-reverse; }
+  .customer-subscription-modal .client-plan-modal-actions button { width: 100%; }
 }
 
 /* Refined single-account sign-in. The backend determines the account role. */
