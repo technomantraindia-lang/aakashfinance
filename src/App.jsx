@@ -1323,6 +1323,7 @@ function PrivacyPolicyPage() {
 function AdminApp({ session, onLogout, onSessionUpdate }) {
   const [data, setData] = useState(loadData);
   const [section, setSection] = useState("dashboard");
+  const [adminSidebarOpen, setAdminSidebarOpen] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState(null);
   const [saveStatus, setSaveStatus] = useState("Ready");
   const [toast, setToast] = useState("");
@@ -2771,6 +2772,7 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
       setSelectedClientId(null);
     }
     setSection(key);
+    setAdminSidebarOpen(false);
   };
 
   const openClientProfile = (clientId) => {
@@ -2779,8 +2781,12 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
   };
 
   return (
-    <main className="app-shell customer-shell">
-      <aside className="sidebar customer-sidebar">
+    <main className={`app-shell customer-shell admin-shell${adminSidebarOpen ? " admin-mobile-menu-open" : ""}`}>
+      <button className="admin-mobile-menu-toggle" type="button" onClick={() => setAdminSidebarOpen((current) => !current)} aria-expanded={adminSidebarOpen} aria-controls="admin-main-sidebar">
+        <Icon name={adminSidebarOpen ? "close" : "menu"} />
+        <span>{adminSidebarOpen ? "Close menu" : titleFor(section)}</span>
+      </button>
+      <aside className="sidebar customer-sidebar" id="admin-main-sidebar">
         <div className="brand">
           <span className="brand-mark">
             <KuberBrandMark />
@@ -2914,16 +2920,18 @@ function SubscriptionPanel({ plans = [], subscribers = [], data = { clients: [],
         </article>
         <article className="settings-card subscription-dashboard-section subscription-monthly-chart-card">
           <div className="compact-card-head"><span className="settings-card-icon"><Icon name="chart" /></span><div><h3>Monthly subscriptions</h3><p>Har month kitne customers ne plan liya.</p></div><div className="subscription-chart-controls"><label htmlFor="subscription-year">Year</label><select id="subscription-year" value={selectedSubscriptionYear} onChange={(event) => setSelectedSubscriptionYear(Number(event.target.value))}>{subscriptionYears.map((year) => <option key={year} value={year}>{year}</option>)}</select><strong className="subscription-chart-total">{selectedYearSubscriptions} in {selectedSubscriptionYear}</strong></div></div>
-          <div className="subscription-monthly-chart" aria-label="Monthly subscription chart">
-            {monthlySubscriptions.map((item) => (
-              <div className="subscription-chart-column" key={item.key}>
-                <div className="subscription-chart-bar-wrap">
-                  <span>{item.count}</span>
-                  <div className="subscription-chart-bar" style={{ height: `${item.count ? Math.max(12, (item.count / chartMax) * 100) : 5}%` }} />
+          <div className="subscription-monthly-chart-scroll">
+            <div className="subscription-monthly-chart" aria-label="Monthly subscription chart">
+              {monthlySubscriptions.map((item) => (
+                <div className="subscription-chart-column" key={item.key}>
+                  <div className="subscription-chart-bar-wrap">
+                    <span>{item.count}</span>
+                    <div className="subscription-chart-bar" style={{ height: `${item.count ? Math.max(12, (item.count / chartMax) * 100) : 5}%` }} />
+                  </div>
+                  <small>{item.label}</small>
                 </div>
-                <small>{item.label}</small>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
           <p className="subscription-chart-footnote">Count customer ke start date ya created date se auto update hota hai. This month: {subscriptionsThisMonth} new subscription{subscriptionsThisMonth === 1 ? "" : "s"}.</p>
         </article>
@@ -2934,6 +2942,7 @@ function SubscriptionPanel({ plans = [], subscribers = [], data = { clients: [],
 
 function StandaloneSubscriptionPanel({ session, onLogout }) {
   const [activeView, setActiveView] = useState("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [plans, setPlans] = useState(() => ensureDefaultTieredSubscriptionPlans(loadSubscriptionPlans()));
   const [subscribers, setSubscribers] = useState(loadSubscriptionSubscribers);
   const [paymentDetails, setPaymentDetails] = useState(loadSubscriptionPayment);
@@ -2949,6 +2958,10 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
     ["customers", "Customers", "person"]
   ];
   const activeLabel = sidebarItems.find(([key]) => key === activeView)?.[1] || "Dashboard";
+  const openSubscriptionView = (view) => {
+    setActiveView(view);
+    setSidebarOpen(false);
+  };
 
   useEffect(() => {
     localStorage.setItem(SUBSCRIPTION_PLANS_KEY, JSON.stringify(plans));
@@ -3106,8 +3119,12 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
   }, [activeView, session.token]);
 
   return (
-    <main className="subscription-standalone-shell">
-      <aside className="subscription-standalone-sidebar">
+    <main className={`subscription-standalone-shell${sidebarOpen ? " subscription-menu-open" : ""}`}>
+      <button className="subscription-mobile-menu-toggle" type="button" onClick={() => setSidebarOpen((current) => !current)} aria-expanded={sidebarOpen} aria-controls="subscription-workspace-sidebar">
+        <Icon name={sidebarOpen ? "close" : "menu"} />
+        <span>{sidebarOpen ? "Close menu" : activeLabel}</span>
+      </button>
+      <aside className="subscription-standalone-sidebar" id="subscription-workspace-sidebar">
         <div className="brand">
           <span className="brand-mark"><KuberBrandMark /></span>
           <div><strong>My Fleet</strong><small>Subscription workspace</small></div>
@@ -3115,7 +3132,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
         <div className="subscription-sidebar-label">SUBSCRIPTION MANAGEMENT</div>
         <nav className="subscription-sidebar-nav" aria-label="Subscription workspace">
           {sidebarItems.map(([key, label, icon]) => (
-            <button className={activeView === key ? "active" : ""} type="button" key={key} onClick={() => setActiveView(key)}>
+            <button className={activeView === key ? "active" : ""} type="button" key={key} onClick={() => openSubscriptionView(key)}>
               <Icon name={icon} />
               <span>{label}</span>
             </button>
@@ -6694,6 +6711,7 @@ const iconPaths = {
   filter: <path d="M4 6h16M7 12h10M10 18h4" />,
   close: <path d="m6 6 12 12M18 6 6 18" />,
   refresh: <><path d="M20 11a8 8 0 0 0-14.7-3L3 11" /><path d="M3 4v7h7M4 13a8 8 0 0 0 14.7 3L21 13" /><path d="M21 20v-7h-7" /></>,
+  menu: <path d="M4 6h16M4 12h16M4 18h16" />,
   "chevron-down": <path d="m7 9 5 5 5-5" />,
   "chevron-right": <path d="m9 6 6 6-6 6" />
 };

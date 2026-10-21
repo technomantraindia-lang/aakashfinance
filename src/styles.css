@@ -629,6 +629,10 @@ button:disabled {
   overflow: hidden;
 }
 
+.admin-mobile-menu-toggle {
+  display: none;
+}
+
 /* ════════════════════ Sidebar ════════════════════ */
 .sidebar {
   background: linear-gradient(180deg, #081426 0%, #081426 100%);
@@ -11659,6 +11663,58 @@ textarea {
   }
 }
 
+/* Main Admin navigation collapses into a proper mobile menu. */
+@media (max-width: 900px) {
+  .admin-shell {
+    display: block;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .admin-shell > .sidebar {
+    display: none;
+  }
+
+  .admin-shell.admin-mobile-menu-open > .sidebar {
+    display: flex;
+  }
+
+  .admin-shell > .workspace {
+    min-height: calc(100vh - 70px);
+  }
+
+  .admin-mobile-menu-toggle {
+    align-items: center;
+    background: #102744;
+    border: 1px solid #416E9E;
+    border-radius: 10px;
+    color: #F5F8FD;
+    display: inline-flex;
+    font-size: 12px;
+    gap: 8px;
+    justify-content: flex-start;
+    margin: 10px 14px 0;
+    min-height: 42px;
+    padding: 0 13px;
+    position: sticky;
+    top: 10px;
+    width: calc(100% - 28px);
+    z-index: 40;
+  }
+
+  .admin-mobile-menu-toggle:hover,
+  .admin-mobile-menu-open .admin-mobile-menu-toggle {
+    border-color: #F0A500;
+    color: #F0A500;
+  }
+
+  .admin-mobile-menu-toggle .icon {
+    height: 18px;
+    width: 18px;
+  }
+}
+
 /* Sidebar profile footer: give account identity and sign-out a clear home. */
 .sidebar-footer {
   background: linear-gradient(145deg, rgba(20, 47, 85, 0.84), rgba(12, 30, 56, 0.92));
@@ -13586,6 +13642,10 @@ textarea {
   padding: 0;
 }
 
+.subscription-mobile-menu-toggle {
+  display: none;
+}
+
 .subscription-standalone-sidebar {
   background: linear-gradient(180deg, #0D213D 0%, #09192E 100%);
   border-right: 1px solid #203F66;
@@ -14335,6 +14395,13 @@ textarea {
   color: #7898BC;
   font-size: 10px;
   margin: 10px 0 0;
+}
+
+.subscription-monthly-chart-scroll {
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-color: #31577F transparent;
+  scrollbar-width: thin;
 }
 
 .subscription-dashboard-plan-preview {
@@ -16976,6 +17043,415 @@ textarea {
 
   .admin-profile-hero-row {
     margin-top: 24px;
+  }
+}
+
+/* Responsive admin workspace: keep every module usable from phones to wide screens. */
+@media (max-width: 1100px) {
+  .sidebar-inner {
+    height: auto;
+  }
+
+  .sidebar {
+    padding: 16px 18px;
+  }
+
+  .brand {
+    padding-bottom: 14px;
+  }
+
+  .sidebar-footer {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    margin-top: 12px;
+    padding: 12px 0 0;
+  }
+
+  .sidebar-footer-inner {
+    flex: 1;
+  }
+
+  .logout-button {
+    gap: 7px;
+    padding: 0 12px;
+    width: auto;
+  }
+
+  .logout-button span {
+    display: inline;
+    font-size: 11px;
+  }
+
+  .workspace {
+    min-width: 0;
+    padding: 22px 22px 32px;
+  }
+
+  .topbar {
+    margin-bottom: 18px;
+  }
+
+  .subscription-standalone-shell {
+    display: block;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .subscription-standalone-sidebar {
+    min-height: auto;
+    padding: 18px 16px;
+  }
+
+  .subscription-standalone-sidebar .brand {
+    margin-bottom: 18px;
+  }
+
+  .subscription-sidebar-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .subscription-sidebar-footer {
+    margin-top: 18px;
+  }
+
+  .subscription-standalone-content {
+    height: auto;
+    min-height: calc(100vh - 230px);
+    overflow: visible;
+    padding: 16px 18px 34px;
+  }
+}
+
+@media (max-width: 900px) {
+  .sidebar-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .metrics,
+  .profile-stats,
+  .grid-list,
+  .grid-list.wide,
+  .caller-grid,
+  .dues-summary,
+  .dues-list,
+  .vehicle-detail-grid,
+  .excel-detail-columns,
+  .detail-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .subscription-subscriber-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .subscription-subscriber-card {
+    align-items: start;
+    grid-template-columns: minmax(190px, 1.4fr) repeat(2, minmax(110px, 1fr));
+  }
+
+  .subscription-subscriber-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+
+  .subscription-plan-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .subscription-plan-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .subscription-mobile-menu-toggle {
+    align-items: center;
+    background: #102744;
+    border: 1px solid #416E9E;
+    border-radius: 10px;
+    color: #F5F8FD;
+    display: inline-flex;
+    font-size: 12px;
+    gap: 8px;
+    justify-content: flex-start;
+    margin: 10px 12px 0;
+    min-height: 42px;
+    padding: 0 13px;
+    position: sticky;
+    top: 10px;
+    width: calc(100% - 24px);
+    z-index: 30;
+  }
+
+  .subscription-mobile-menu-toggle:hover,
+  .subscription-menu-open .subscription-mobile-menu-toggle {
+    border-color: #F0A500;
+    color: #F0A500;
+  }
+
+  .subscription-mobile-menu-toggle .icon {
+    height: 18px;
+    width: 18px;
+  }
+
+  .subscription-standalone-sidebar {
+    display: none;
+  }
+
+  .subscription-menu-open .subscription-standalone-sidebar {
+    display: flex;
+  }
+
+  .sidebar {
+    padding: 14px 12px;
+  }
+
+  .brand {
+    gap: 9px;
+    padding: 0 2px 12px;
+  }
+
+  .brand-badge {
+    height: 38px;
+    width: 38px;
+  }
+
+  .brand strong {
+    font-size: 15px;
+  }
+
+  .brand small {
+    font-size: 10px;
+  }
+
+  .sidebar-nav {
+    gap: 5px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sidebar-nav button {
+    font-size: 12px;
+    min-height: 40px;
+    padding: 8px 9px;
+  }
+
+  .sidebar-footer {
+    margin-top: 10px;
+  }
+
+  .sidebar-footer-info strong {
+    font-size: 12px;
+  }
+
+  .workspace {
+    padding: 16px 12px 26px;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    gap: 11px;
+  }
+
+  .topbar h1 {
+    font-size: 22px;
+  }
+
+  .save-pill {
+    align-self: stretch;
+    justify-content: center;
+    font-size: 11px;
+  }
+
+  .metrics,
+  .profile-stats,
+  .grid-list,
+  .grid-list.wide,
+  .caller-grid,
+  .dues-summary,
+  .dues-list,
+  .vehicle-detail-grid,
+  .excel-detail-columns,
+  .detail-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .panel,
+  .asset,
+  .due,
+  .table-wrap,
+  .settings-card,
+  .settings-access,
+  .subscription-subscriber-form,
+  .subscription-payment-settings {
+    border-radius: 12px;
+  }
+
+  .subscription-standalone-sidebar {
+    padding: 14px 12px;
+  }
+
+  .subscription-sidebar-nav {
+    gap: 5px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .subscription-sidebar-nav button {
+    min-height: 42px;
+    padding: 0 10px;
+  }
+
+  .subscription-standalone-content {
+    min-height: 0;
+    padding: 12px 12px 28px;
+  }
+
+  .subscription-standalone-header,
+  .subscription-customers-toolbar,
+  .subscription-subscribers-toolbar,
+  .subscription-dashboard-titlebar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 13px;
+    padding: 15px;
+  }
+
+  .subscription-standalone-actions,
+  .subscription-standalone-actions button,
+  .subscription-subscribers-toolbar .subscription-primary-button,
+  .subscription-customers-count {
+    width: 100%;
+  }
+
+  .subscription-standalone-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .subscription-dashboard-titlebar h1,
+  .subscription-customers-toolbar h2,
+  .subscription-subscribers-toolbar h2 {
+    font-size: 21px;
+  }
+
+  .subscription-dashboard-overview,
+  .subscription-dashboard-columns,
+  .subscription-plan-grid,
+  .subscription-plan-form-grid,
+  .subscription-subscriber-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .subscription-plan-form-wide {
+    grid-column: auto;
+  }
+
+  .subscription-subscriber-card {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 14px;
+  }
+
+  .subscription-subscriber-main {
+    grid-column: 1 / -1;
+  }
+
+  .subscription-subscriber-actions {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+
+  .subscription-reminder-button {
+    flex: 1;
+  }
+
+  .subscription-payment-copy {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .subscription-payment-saved {
+    margin-left: 47px;
+    width: calc(100% - 47px);
+  }
+
+  .subscription-tier-editor > label {
+    gap: 8px;
+    grid-template-columns: 1fr 110px;
+    padding: 7px 9px;
+  }
+
+  .subscription-monthly-chart-scroll {
+    margin-right: -2px;
+    overflow-x: visible;
+  }
+
+  .subscription-monthly-chart {
+    gap: 8px;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(92px, 1fr));
+    height: auto;
+    min-height: 236px;
+    min-width: 0;
+  }
+
+  .subscription-monthly-chart-card .compact-card-head {
+    align-items: start;
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .subscription-monthly-chart-card .subscription-chart-controls {
+    grid-column: 1 / -1;
+  }
+
+  .subscription-chart-controls {
+    align-items: flex-start;
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .subscription-chart-controls .subscription-chart-total {
+    margin-left: auto;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+  }
+
+  table {
+    min-width: 620px;
+  }
+}
+
+@media (max-width: 420px) {
+  .subscription-sidebar-nav button {
+    font-size: 11px;
+    gap: 7px;
+    padding: 0 8px;
+  }
+
+  .subscription-sidebar-nav button .icon {
+    height: 16px;
+    width: 16px;
+  }
+
+  .subscription-subscriber-card {
+    gap: 12px;
+  }
+
+  .subscription-chart-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .subscription-chart-controls select,
+  .subscription-chart-controls .subscription-chart-total {
+    width: 100%;
+  }
+
+  .subscription-chart-controls .subscription-chart-total {
+    margin-left: 0;
   }
 }
 
