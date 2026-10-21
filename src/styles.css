@@ -14178,8 +14178,8 @@ textarea {
   border-radius: 14px;
   display: flex;
   justify-content: space-between;
-  margin: 0 auto 16px;
-  max-width: 1540px;
+  margin: 0 0 16px;
+  max-width: none;
   padding: 18px 20px;
   width: 100%;
 }
@@ -14227,6 +14227,16 @@ textarea {
   width: 6px;
 }
 
+.subscription-dashboard-live.warning {
+  border-color: #8A6A22;
+  color: #FFD27A;
+}
+
+.subscription-dashboard-live.warning i {
+  background: #F0A500;
+  box-shadow: 0 0 0 3px rgba(240, 165, 0, .14);
+}
+
 .subscription-dashboard-overview > .subscription-dashboard-card:nth-child(5) {
   display: none;
 }
@@ -14249,10 +14259,34 @@ textarea {
   border-radius: 12px;
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   height: 190px;
   margin-top: 16px;
   padding: 16px 16px 12px;
+}
+
+.subscription-chart-controls {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.subscription-chart-controls label {
+  color: #86A4C7;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.subscription-chart-controls select {
+  background: #102744;
+  border: 1px solid #31577F;
+  border-radius: 7px;
+  color: #F5F8FD;
+  font-size: 11px;
+  font-weight: 800;
+  min-width: 78px;
+  padding: 7px 9px;
 }
 
 .subscription-chart-column {
@@ -14393,6 +14427,43 @@ textarea {
 .subscription-form-head h3 { color: #F5F8FD; font-size: 17px; margin: 0; }
 .subscription-form-head p { color: #86A4C7; font-size: 11px; margin: 4px 0 0; }
 .subscription-form-head > span { color: #70D7B2; font-size: 10px; font-weight: 900; text-transform: uppercase; }
+
+.subscription-form-tools {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.subscription-form-tools > span {
+  color: #70D7B2;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.subscription-test-date-toggle {
+  align-items: center;
+  background: #102D50;
+  border: 1px solid #31577F;
+  border-radius: 8px;
+  color: #CFE3F8;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 10px;
+  gap: 6px;
+  padding: 7px 9px;
+}
+
+.subscription-test-date-toggle input {
+  accent-color: #F0A500;
+  height: 13px;
+  margin: 0;
+  width: 13px;
+}
+
+.subscription-test-date-toggle b { font-weight: 900; }
+.subscription-test-date-toggle small { color: #86A4C7; }
 
 .subscription-plan-form-grid {
   display: grid;
@@ -14617,6 +14688,10 @@ textarea {
   opacity: 1;
 }
 
+.subscription-subscriber-form-grid input:not(:disabled) {
+  border-color: #F0A500;
+}
+
 .subscription-assignment-summary {
   align-items: center;
   background: linear-gradient(135deg, #102D50, #0D213D);
@@ -14735,6 +14810,12 @@ textarea {
   }
 
   .subscription-chart-total {
+    margin: 8px 0 0;
+  }
+
+  .subscription-chart-controls {
+    align-items: flex-start;
+    flex-wrap: wrap;
     margin: 8px 0 0;
   }
 

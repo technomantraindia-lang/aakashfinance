@@ -99,23 +99,33 @@ function loadSubscriptionPayment() {
   }
 }
 
+function normalizeSubscriptionPaymentLink(paymentLink) {
+  const value = String(paymentLink || "").trim();
+  if (!value || /your-upi|your[-_ ]?account|example\.com/i.test(value)) return "";
+  if (/^upi:\/\/pay\?/i.test(value) || /^https?:\/\//i.test(value)) return value;
+  if (/^[^\s@]+@[^\s@]+$/i.test(value)) return `upi://pay?pa=${encodeURIComponent(value)}`;
+  return value;
+}
+
 function subscriptionPaymentLinkWithAmount(paymentLink, amount) {
-  if (!paymentLink || amount === undefined || amount === null) return paymentLink;
+  const normalizedPaymentLink = normalizeSubscriptionPaymentLink(paymentLink);
+  if (!normalizedPaymentLink || amount === undefined || amount === null) return normalizedPaymentLink;
   const normalizedAmount = Number(amount || 0).toFixed(2);
   try {
-    const url = new URL(paymentLink);
+    const url = new URL(normalizedPaymentLink);
     url.searchParams.set("am", normalizedAmount);
     url.searchParams.set("cu", "INR");
     return url.toString();
   } catch {
-    const separator = paymentLink.includes("?") ? "&" : "?";
-    return `${paymentLink}${separator}am=${encodeURIComponent(normalizedAmount)}&cu=INR`;
+    const separator = normalizedPaymentLink.includes("?") ? "&" : "?";
+    return `${normalizedPaymentLink}${separator}am=${encodeURIComponent(normalizedAmount)}&cu=INR`;
   }
 }
 
 function subscriptionQrUrl(paymentLink, qrCodeUrl, amount) {
-  if (!paymentLink) return qrCodeUrl || "";
-  const amountLink = subscriptionPaymentLinkWithAmount(paymentLink, amount);
+  const normalizedPaymentLink = normalizeSubscriptionPaymentLink(paymentLink);
+  if (!normalizedPaymentLink) return qrCodeUrl || "";
+  const amountLink = subscriptionPaymentLinkWithAmount(normalizedPaymentLink, amount);
   return `https://quickchart.io/qr?text=${encodeURIComponent(amountLink)}&size=600&margin=2`;
 }
 
@@ -2834,16 +2844,24 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
   );
 }
 
-function SubscriptionPanel({ plans = [], subscribers = [], data = { clients: [], vehicles: [] } }) {
+function SubscriptionPanel({ plans = [], subscribers = [], data = { clients: [], vehicles: [] }, subscriptionError = "" }) {
+  const currentYear = new Date().getFullYear();
+  const [selectedSubscriptionYear, setSelectedSubscriptionYear] = useState(currentYear);
   const activeSubscribers = subscribers.filter((subscriber) => subscriptionDaysRemaining(subscriber.endDate) === null || subscriptionDaysRemaining(subscriber.endDate) >= 0);
   const renewalsDue = activeSubscribers.filter((subscriber) => {
     const days = subscriptionDaysRemaining(subscriber.endDate);
     return days !== null && days >= 0 && days <= 30;
   }).length;
-  const monthlySubscriptions = Array.from({ length: 6 }, (_, index) => {
-    const date = new Date();
-    date.setDate(1);
-    date.setMonth(date.getMonth() - (5 - index));
+  const subscriptionYearSet = new Set(Array.from({ length: 5 }, (_, index) => currentYear - index));
+  subscribers.forEach((subscriber) => {
+    const sourceDate = subscriber.startDate || subscriber.createdAt;
+    if (!sourceDate) return;
+    const date = new Date(String(sourceDate).includes("T") ? sourceDate : `${sourceDate}T00:00:00`);
+    if (!Number.isNaN(date.getTime())) subscriptionYearSet.add(date.getFullYear());
+  });
+  const subscriptionYears = Array.from(subscriptionYearSet).sort((first, second) => second - first);
+  const monthlySubscriptions = Array.from({ length: 12 }, (_, monthIndex) => {
+    const date = new Date(selectedSubscriptionYear, monthIndex, 1);
     return {
       key: `${date.getFullYear()}-${date.getMonth()}`,
       label: date.toLocaleDateString("en-IN", { month: "short" }),
@@ -2857,7 +2875,14 @@ function SubscriptionPanel({ plans = [], subscribers = [], data = { clients: [],
     const bucket = monthlySubscriptions.find((item) => item.key === `${date.getFullYear()}-${date.getMonth()}`);
     if (bucket) bucket.count += 1;
   });
-  const subscriptionsThisMonth = monthlySubscriptions[monthlySubscriptions.length - 1]?.count || 0;
+  const subscriptionsThisMonth = subscribers.filter((subscriber) => {
+    const sourceDate = subscriber.startDate || subscriber.createdAt;
+    if (!sourceDate) return false;
+    const date = new Date(String(sourceDate).includes("T") ? sourceDate : `${sourceDate}T00:00:00`);
+    const now = new Date();
+    return !Number.isNaN(date.getTime()) && date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+  }).length;
+  const selectedYearSubscriptions = monthlySubscriptions.reduce((total, item) => total + item.count, 0);
   const chartMax = Math.max(1, ...monthlySubscriptions.map((item) => item.count));
   return (
     <section className="dashboard-page subscription-dashboard-page">
@@ -2867,7 +2892,7 @@ function SubscriptionPanel({ plans = [], subscribers = [], data = { clients: [],
           <h1>Subscription dashboard</h1>
           <p>Customer subscriptions, renewals aur monthly growth ek jagah.</p>
         </div>
-        <span className="subscription-dashboard-live"><i />Live workspace</span>
+        <span className={`subscription-dashboard-live${subscriptionError ? " warning" : ""}`} title={subscriptionError}><i />{subscriptionError ? "Sync pending" : "Live workspace"}</span>
       </div>
 
       <div className="subscription-dashboard-overview">
@@ -2888,7 +2913,7 @@ function SubscriptionPanel({ plans = [], subscribers = [], data = { clients: [],
           )}
         </article>
         <article className="settings-card subscription-dashboard-section subscription-monthly-chart-card">
-          <div className="compact-card-head"><span className="settings-card-icon"><Icon name="chart" /></span><div><h3>Monthly subscriptions</h3><p>Har month kitne customers ne plan liya.</p></div><strong className="subscription-chart-total">{subscriptionsThisMonth} this month</strong></div>
+          <div className="compact-card-head"><span className="settings-card-icon"><Icon name="chart" /></span><div><h3>Monthly subscriptions</h3><p>Har month kitne customers ne plan liya.</p></div><div className="subscription-chart-controls"><label htmlFor="subscription-year">Year</label><select id="subscription-year" value={selectedSubscriptionYear} onChange={(event) => setSelectedSubscriptionYear(Number(event.target.value))}>{subscriptionYears.map((year) => <option key={year} value={year}>{year}</option>)}</select><strong className="subscription-chart-total">{selectedYearSubscriptions} in {selectedSubscriptionYear}</strong></div></div>
           <div className="subscription-monthly-chart" aria-label="Monthly subscription chart">
             {monthlySubscriptions.map((item) => (
               <div className="subscription-chart-column" key={item.key}>
@@ -2900,7 +2925,7 @@ function SubscriptionPanel({ plans = [], subscribers = [], data = { clients: [],
               </div>
             ))}
           </div>
-          <p className="subscription-chart-footnote">Count customer ke start date ya created date se auto update hota hai.</p>
+          <p className="subscription-chart-footnote">Count customer ke start date ya created date se auto update hota hai. This month: {subscriptionsThisMonth} new subscription{subscriptionsThisMonth === 1 ? "" : "s"}.</p>
         </article>
       </section>
     </section>
@@ -3008,37 +3033,44 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
   const sendSubscriptionReminder = async (row) => {
     const phone = String(row.customer?.phone || "").replace(/\D/g, "");
     const normalizedPhone = phone.length === 10 ? `91${phone}` : phone;
-    const amountPaymentLink = subscriptionPaymentLinkWithAmount(paymentDetails.paymentLink, row.currentPrice);
-    const qrUrl = subscriptionQrUrl(paymentDetails.paymentLink, paymentDetails.qrCodeUrl, row.currentPrice);
-    if (!normalizedPhone || !paymentDetails.paymentLink || !qrUrl) return;
+    const configuredPaymentLink = normalizeSubscriptionPaymentLink(paymentDetails.paymentLink);
+    const amountPaymentLink = subscriptionPaymentLinkWithAmount(configuredPaymentLink, row.currentPrice);
+    const qrUrl = subscriptionQrUrl(configuredPaymentLink, paymentDetails.qrCodeUrl, row.currentPrice);
+    const hasPaymentDetails = Boolean(configuredPaymentLink && qrUrl);
+    if (!normalizedPhone) return;
     const message = [
-      `Namaste ${row.customer?.name || "Customer"},`,
-      row.status === "Expired" ? "Aapka subscription expire ho gaya hai." : "Aapka subscription expire hone wala hai.",
+      `Hello ${row.customer?.name || "Customer"},`,
+      row.status === "Expired" ? "Your subscription has expired." : "Your subscription is about to expire.",
       `Plan: ${row.plan?.name || "Subscription plan"}`,
       `Plan details: ${row.plan?.description || "Fleet subscription renewal"}`,
       `Current active vehicles: ${row.vehicleCount}`,
       `Payable amount: ₹${row.currentPrice.toLocaleString("en-IN")}`,
       `Expiry date: ${formatSubscriptionDate(row.endDate)}`,
-      "Subscription update/renew karne ke liye neeche payment link use karein:",
+      "Please use the payment link below to renew or update your subscription:",
       amountPaymentLink,
-      "Amount-enabled QR image bhi saath share ki ja rahi hai:",
+      "An amount-specific QR code is attached with this message:",
       qrUrl,
-      "Payment ke baad receipt share kar dein."
+      "Please share the payment receipt after completing the payment."
     ].join("\n");
-    try {
-      const qrResponse = await fetch(qrUrl, { mode: "cors" });
-      if (qrResponse.ok && typeof File !== "undefined" && navigator.share && navigator.canShare) {
-        const qrBlob = await qrResponse.blob();
-        const qrFile = new File([qrBlob], `subscription-${row.customer?.name || "customer"}.png`, { type: qrBlob.type || "image/png" });
-        if (navigator.canShare({ files: [qrFile] })) {
-          await navigator.share({ title: "Subscription payment update", text: message, files: [qrFile] });
-          return;
+    const finalMessage = hasPaymentDetails
+      ? message
+      : message.split("\n").slice(0, 7).concat(["Payment link and QR code are not configured yet. Please contact the administrator."]).join("\n");
+    if (hasPaymentDetails) {
+      try {
+        const qrResponse = await fetch(qrUrl, { mode: "cors" });
+        if (qrResponse.ok && typeof File !== "undefined" && navigator.share && navigator.canShare) {
+          const qrBlob = await qrResponse.blob();
+          const qrFile = new File([qrBlob], `subscription-${row.customer?.name || "customer"}.png`, { type: qrBlob.type || "image/png" });
+          if (navigator.canShare({ files: [qrFile] })) {
+            await navigator.share({ title: "Subscription payment update", text: finalMessage, files: [qrFile] });
+            return;
+          }
         }
+      } catch (error) {
+        if (error?.name === "AbortError") return;
       }
-    } catch (error) {
-      if (error?.name === "AbortError") return;
     }
-    window.open(`https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+    window.open(`https://wa.me/${normalizedPhone}?text=${encodeURIComponent(finalMessage)}`, "_blank", "noopener,noreferrer");
   };
 
   useEffect(() => {
@@ -3096,8 +3128,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
         </div>
       </aside>
       <section className="subscription-standalone-content">
-        {subscriptionError && <div className="subscription-workspace-error"><Icon name="info" />{subscriptionError}</div>}
-        {activeView === "dashboard" ? <SubscriptionPanel plans={plans} subscribers={subscribers} data={customerData} /> : activeView === "plans" ? (
+        {activeView === "dashboard" ? <SubscriptionPanel plans={plans} subscribers={subscribers} data={customerData} subscriptionError={subscriptionError} /> : activeView === "plans" ? (
           <SubscriptionPlans plans={plans} onCreate={createPlan} onDelete={deletePlan} />
         ) : activeView === "subscribers" ? (
           <SubscriptionSubscribers data={customerData} plans={plans} subscribers={subscribers} paymentDetails={paymentDetails} onPaymentDetailsChange={updatePaymentDetails} onCreate={createSubscriber} onDelete={deleteSubscriber} onSendReminder={sendSubscriptionReminder} loading={customerLoading} error={customerError} onOpenPlans={() => setActiveView("plans")} />
@@ -3216,18 +3247,20 @@ function SubscriptionPlans({ plans, onCreate, onDelete }) {
 
 function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, onPaymentDetailsChange, onCreate, onDelete, onSendReminder, loading, error, onOpenPlans }) {
   const [formOpen, setFormOpen] = useState(false);
+  const [testDateMode, setTestDateMode] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
   const [draft, setDraft] = useState({ customerId: "", planId: "", startDate: today, endDate: "" });
   const selectedCustomerVehicleCount = subscriptionVehicleCount(data, draft.customerId);
   const selectedPlan = plans.find((plan) => plan.id === draft.planId);
   const selectedPlanPrice = subscriptionPlanPrice(selectedPlan, selectedCustomerVehicleCount);
   const selectedPlanRate = subscriptionPlanRate(selectedPlan, Math.max(1, selectedCustomerVehicleCount));
+  const configuredPaymentLink = normalizeSubscriptionPaymentLink(paymentDetails.paymentLink);
 
   const updateDraft = (event) => {
     const { name, value } = event.target;
     setDraft((current) => {
       const next = { ...current, [name]: value };
-      if (name === "planId") {
+      if (name === "planId" && !testDateMode) {
         const nextPlan = plans.find((plan) => plan.id === value);
         next.endDate = subscriptionEndDateForCycle(current.startDate, nextPlan?.billingCycle);
       }
@@ -3235,11 +3268,20 @@ function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, onP
     });
   };
 
+  const toggleTestDateMode = () => {
+    const nextMode = !testDateMode;
+    setTestDateMode(nextMode);
+    if (!nextMode && selectedPlan) {
+      setDraft((current) => ({ ...current, endDate: subscriptionEndDateForCycle(current.startDate, selectedPlan.billingCycle) }));
+    }
+  };
+
   const submitSubscriber = (event) => {
     event.preventDefault();
     if (!draft.customerId || !draft.planId || !draft.endDate) return;
     onCreate(draft);
     setDraft({ customerId: "", planId: "", startDate: today, endDate: "" });
+    setTestDateMode(false);
     setFormOpen(false);
   };
 
@@ -3270,12 +3312,12 @@ function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, onP
 
       {formOpen && (
         <form className="subscription-subscriber-form" onSubmit={submitSubscriber}>
-          <div className="subscription-form-head"><div><h3>Assign a subscription</h3><p>Customer ko plan aur expiry date ke saath add karein.</p></div><span>Workspace only</span></div>
+          <div className="subscription-form-head"><div><h3>Assign a subscription</h3><p>Customer ko plan aur expiry date ke saath add karein.</p></div><div className="subscription-form-tools"><span>Workspace only</span><label className="subscription-test-date-toggle"><input type="checkbox" checked={testDateMode} onChange={toggleTestDateMode} /><b>Test date mode</b><small>WhatsApp test ke liye</small></label></div></div>
           <div className="subscription-subscriber-form-grid">
             <label><span>Customer</span><select name="customerId" value={draft.customerId} onChange={updateDraft} required><option value="">Select customer</option>{data.clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}</select></label>
             <label><span>Plan</span><select name="planId" value={draft.planId} onChange={updateDraft} required><option value="">Select plan</option>{plans.map((plan) => <option value={plan.id} key={plan.id}>{plan.name} · ₹{Number(plan.price || 0).toLocaleString("en-IN")}</option>)}</select></label>
-            <label><span>Start date <small>Auto set</small></span><input name="startDate" value={draft.startDate} type="date" readOnly disabled required /></label>
-            <label><span>Expiry date <small>Auto from billing cycle</small></span><input name="endDate" value={draft.endDate} type="date" readOnly disabled required /></label>
+            <label><span>Start date <small>{testDateMode ? "Test mode: editable" : "Auto set"}</small></span><input name="startDate" value={draft.startDate} onChange={updateDraft} type="date" readOnly={!testDateMode} disabled={!testDateMode} required /></label>
+            <label><span>Expiry date <small>{testDateMode ? "Test mode: editable" : "Auto from billing cycle"}</small></span><input name="endDate" value={draft.endDate} onChange={updateDraft} type="date" readOnly={!testDateMode} disabled={!testDateMode} required /></label>
           </div>
           {selectedPlan && <div className="subscription-assignment-summary"><span><strong>{selectedCustomerVehicleCount}</strong> active vehicles</span><span><strong>{selectedCustomerVehicleCount ? `₹${selectedPlanPrice.toLocaleString("en-IN")}` : selectedPlanRate !== null ? `₹${selectedPlanRate.toLocaleString("en-IN")}/vehicle` : "₹0"}</strong> {selectedCustomerVehicleCount ? "current total" : "starting rate"}</span><span><strong>{selectedPlan.billingCycle}</strong> billing</span></div>}
           <div className="subscription-plan-form-actions"><button className="subscription-primary-button" type="submit"><Icon name="check" />Save subscriber</button></div>
@@ -3283,11 +3325,11 @@ function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, onP
       )}
 
       <section className="subscription-payment-settings">
-        <div className="subscription-payment-copy"><span className="subscription-plan-icon"><Icon name="money" /></span><div><h3>Admin payment details</h3><p>Reminder message me ye GPay/UPI link aur QR code jayega.</p></div><span className={`subscription-payment-saved${paymentDetails.paymentLink ? " ready" : ""}`}><i />{paymentDetails.paymentLink ? "Saved automatically" : "Not set"}</span></div>
+        <div className="subscription-payment-copy"><span className="subscription-plan-icon"><Icon name="money" /></span><div><h3>Admin payment details</h3><p>UPI ID ya GPay payment link save karein; reminder ke amount ke saath QR image banegi.</p></div><span className={`subscription-payment-saved${configuredPaymentLink ? " ready" : ""}`}><i />{configuredPaymentLink ? "Saved automatically" : "Not set"}</span></div>
         <div className="subscription-payment-grid">
-          <label><span>GPay / UPI payment link</span><input value={paymentDetails.paymentLink} onChange={(event) => onPaymentDetailsChange((current) => ({ ...current, paymentLink: event.target.value.trim() }))} placeholder="upi://pay?pa=your-upi@bank" /></label>
+          <label><span>GPay / UPI ID or payment link</span><input value={paymentDetails.paymentLink} onChange={(event) => onPaymentDetailsChange((current) => ({ ...current, paymentLink: event.target.value.trim() }))} placeholder="bhavesh@oksbi or upi://pay?pa=bhavesh@oksbi" /></label>
         </div>
-        {paymentDetails.paymentLink && <div className="subscription-payment-preview"><img src={subscriptionQrUrl(paymentDetails.paymentLink, paymentDetails.qrCodeUrl)} alt="Admin payment QR code preview" /><div><strong>QR preview ready</strong><span>Subscriber ke amount ke hisaab se naya QR WhatsApp share ke waqt banega.</span></div></div>}
+        {configuredPaymentLink && <div className="subscription-payment-preview"><img src={subscriptionQrUrl(configuredPaymentLink, paymentDetails.qrCodeUrl)} alt="Admin payment QR code preview" /><div><strong>QR preview ready</strong><span>Subscriber ke payable amount ke hisaab se naya QR WhatsApp share ke waqt banega.</span></div></div>}
       </section>
 
       {loading ? (
@@ -3307,7 +3349,7 @@ function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, onP
               <div className="subscription-subscriber-stat"><small>Vehicles</small><strong>{row.vehicleCount}</strong><span>active count</span></div>
               <div className="subscription-subscriber-stat"><small>Current price</small><strong>₹{row.currentPrice.toLocaleString("en-IN")}</strong><span>auto calculated</span></div>
               <div className="subscription-subscriber-stat"><small>Expiry</small><strong>{formatSubscriptionDate(row.endDate)}</strong><span className={`subscription-expiry-status ${row.status === "Expired" ? "expired" : row.status === "Expiring soon" ? "soon" : "active"}`}><i />{row.days === null ? "No date" : row.days < 0 ? `${Math.abs(row.days)} days overdue` : row.days === 0 ? "Expires today" : `${row.days} days left`}</span></div>
-              <div className="subscription-subscriber-actions"><button className="subscription-reminder-button" type="button" disabled={!row.customer?.phone || !paymentDetails.paymentLink} onClick={() => onSendReminder(row)}><Icon name="phone" />Send QR + WhatsApp</button><button className="subscription-subscriber-delete" type="button" onClick={() => { if (window.confirm(`Remove ${row.customer?.name || "this subscriber"}?`)) onDelete(row.id); }} aria-label={`Remove ${row.customer?.name || "subscriber"}`}><Icon name="trash" /></button></div>
+              <div className="subscription-subscriber-actions"><button className="subscription-reminder-button" type="button" disabled={!row.customer?.phone} onClick={() => onSendReminder(row)}><Icon name="phone" />{configuredPaymentLink ? "Send QR + WhatsApp" : "Send WhatsApp test"}</button><button className="subscription-subscriber-delete" type="button" onClick={() => { if (window.confirm(`Remove ${row.customer?.name || "this subscriber"}?`)) onDelete(row.id); }} aria-label={`Remove ${row.customer?.name || "subscriber"}`}><Icon name="trash" /></button></div>
             </article>
           ))}
         </div>
