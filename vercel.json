@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/subscription-panel",
+      "destination": "/"
+    },
+    {
+      "source": "/subscription-panel/",
+      "destination": "/"
+    }
+  ]
+}
