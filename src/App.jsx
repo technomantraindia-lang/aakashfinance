@@ -3126,6 +3126,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
   const [customerLoading, setCustomerLoading] = useState(false);
   const [customerError, setCustomerError] = useState("");
   const [subscriptionError, setSubscriptionError] = useState("");
+  const paymentSaveTimer = useRef(null);
   const sidebarItems = [
     ["dashboard", "Dashboard", "home"],
     ["plans", "Plans", "money"],
@@ -3172,9 +3173,11 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
         });
         if (!remotePlans.length) {
           persistPlans.then(() => Promise.all(localSubscribers.map((subscriber) => saveSubscriptionRequest(session.token, "/subscription-subscribers", "POST", subscriber)))).catch(() => {});
-          if (localPayment.paymentLink || localPayment.qrCodeUrl) {
-            saveSubscriptionRequest(session.token, "/subscription-payment", "PUT", localPayment).catch(() => {});
-          }
+        }
+        const remoteHasPayment = Boolean(remote.paymentDetails?.paymentLink || remote.paymentDetails?.qrCodeUrl);
+        if (!remoteHasPayment && (localPayment.paymentLink || localPayment.qrCodeUrl)) {
+          saveSubscriptionRequest(session.token, "/subscription-payment", "PUT", localPayment)
+            .catch((error) => { if (active) setSubscriptionError(error.message || "Payment details database me save nahi ho sake."); });
         }
       })
       .catch((error) => {
@@ -3205,6 +3208,15 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
     saveSubscriptionRequest(session.token, `/subscription-subscribers/${encodeURIComponent(subscriberId)}`, "DELETE", {}).catch((error) => setSubscriptionError(error.message || "Subscriber database se remove nahi ho saka."));
   };
 
+  const persistPaymentDetails = (next) => {
+    saveSubscriptionRequest(session.token, "/subscription-payment", "PUT", next)
+      .catch((error) => setSubscriptionError(error.message || "Payment details database me save nahi ho sake."));
+  };
+
+  useEffect(() => () => {
+    if (paymentSaveTimer.current) window.clearTimeout(paymentSaveTimer.current);
+  }, []);
+
   const updatePaymentDetails = (updater) => {
     setPaymentDetails((current) => {
       const next = typeof updater === "function" ? updater(current) : { ...current, ...updater };
@@ -3213,7 +3225,8 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
       } catch {
         // The effect below will retry persistence after the next render.
       }
-      saveSubscriptionRequest(session.token, "/subscription-payment", "PUT", next).catch((error) => setSubscriptionError(error.message || "Payment details database me save nahi ho sake.") );
+      if (paymentSaveTimer.current) window.clearTimeout(paymentSaveTimer.current);
+      paymentSaveTimer.current = window.setTimeout(() => persistPaymentDetails(next), 500);
       return next;
     });
   };
@@ -3326,7 +3339,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
         {activeView === "dashboard" ? <SubscriptionPanel plans={plans} subscribers={subscribers} data={customerData} subscriptionError={subscriptionError} /> : activeView === "plans" ? (
           <SubscriptionPlans plans={plans} onCreate={createPlan} onDelete={deletePlan} />
         ) : activeView === "subscribers" ? (
-          <SubscriptionSubscribers data={customerData} plans={plans} subscribers={subscribers} paymentDetails={paymentDetails} onPaymentDetailsChange={updatePaymentDetails} onCreate={createSubscriber} onDelete={deleteSubscriber} onSendReminder={sendSubscriptionReminder} loading={customerLoading} error={customerError} onOpenPlans={() => setActiveView("plans")} />
+          <SubscriptionSubscribers data={customerData} plans={plans} subscribers={subscribers} paymentDetails={paymentDetails} onPaymentDetailsChange={updatePaymentDetails} onCreate={createSubscriber} onDelete={deleteSubscriber} onSendReminder={sendSubscriptionReminder} loading={customerLoading} error={customerError || subscriptionError} onOpenPlans={() => setActiveView("plans")} />
         ) : activeView === "customers" ? (
           <SubscriptionCustomers
             data={customerData}
@@ -3522,7 +3535,7 @@ function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, onP
       <section className="subscription-payment-settings">
         <div className="subscription-payment-copy"><span className="subscription-plan-icon"><Icon name="money" /></span><div><h3>Admin payment details</h3><p>UPI ID ya GPay payment link save karein; reminder ke amount ke saath QR image banegi.</p></div><span className={`subscription-payment-saved${configuredPaymentLink ? " ready" : ""}`}><i />{configuredPaymentLink ? "Saved automatically" : "Not set"}</span></div>
         <div className="subscription-payment-grid">
-          <label><span>GPay / UPI ID or payment link</span><input value={paymentDetails.paymentLink} onChange={(event) => onPaymentDetailsChange((current) => ({ ...current, paymentLink: event.target.value.trim() }))} placeholder="bhavesh@oksbi or upi://pay?pa=bhavesh@oksbi" /></label>
+          <label><span>GPay / UPI ID or payment link</span><input value={paymentDetails.paymentLink} onChange={(event) => onPaymentDetailsChange((current) => ({ ...current, paymentLink: event.target.value }))} onBlur={() => onPaymentDetailsChange((current) => ({ ...current, paymentLink: current.paymentLink.trim() }))} placeholder="bhavesh@oksbi or upi://pay?pa=bhavesh@oksbi" /></label>
         </div>
         {configuredPaymentLink && <div className="subscription-payment-preview"><img src={subscriptionQrUrl(configuredPaymentLink, paymentDetails.qrCodeUrl)} alt="Admin payment QR code preview" /><div><strong>QR preview ready</strong><span>Subscriber ke payable amount ke hisaab se naya QR WhatsApp share ke waqt banega.</span></div></div>}
       </section>
