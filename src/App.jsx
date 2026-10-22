@@ -1766,6 +1766,8 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
   const [toast, setToast] = useState("");
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [activeValidation, setActiveValidation] = useState(null);
+  const [subscriptionPlans, setSubscriptionPlans] = useState(() => ensureDefaultTieredSubscriptionPlans(loadSubscriptionPlans()));
+  const [subscriptionSubscribers, setSubscriptionSubscribers] = useState(loadSubscriptionSubscribers);
   const validationTimerRef = useRef(null);
   const mutationVersionRef = useRef(0);
   const pendingMutationCountRef = useRef(0);
@@ -1775,6 +1777,35 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
     const timerId = window.setTimeout(() => setToast(""), 3500);
     return () => window.clearTimeout(timerId);
   }, [toast]);
+
+  useEffect(() => {
+    localStorage.setItem(SUBSCRIPTION_PLANS_KEY, JSON.stringify(subscriptionPlans));
+  }, [subscriptionPlans]);
+
+  useEffect(() => {
+    localStorage.setItem(SUBSCRIPTION_SUBSCRIBERS_KEY, JSON.stringify(subscriptionSubscribers));
+  }, [subscriptionSubscribers]);
+
+  useEffect(() => {
+    let active = true;
+    const localPlans = ensureDefaultTieredSubscriptionPlans(loadSubscriptionPlans());
+    const localSubscribers = loadSubscriptionSubscribers();
+    fetchSubscriptionWorkspace(session.token)
+      .then((remote) => {
+        if (!active) return;
+        const remotePlans = Array.isArray(remote.plans) ? remote.plans : [];
+        const nextPlans = ensureDefaultTieredSubscriptionPlans(remotePlans.length ? remotePlans : localPlans);
+        const nextSubscribers = Array.isArray(remote.subscribers) && (remote.subscribers.length || remotePlans.length)
+          ? remote.subscribers
+          : localSubscribers;
+        setSubscriptionPlans(nextPlans);
+        setSubscriptionSubscribers(nextSubscribers);
+      })
+      .catch(() => {
+        // Local subscription workspace data remains available when the API is temporarily offline.
+      });
+    return () => { active = false; };
+  }, [session.token]);
 
   const enqueueMutation = (operation) => {
     const request = mutationQueueRef.current.then(operation);
@@ -2033,6 +2064,33 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
       setSaveStatus("Error");
       setToast(err.message || "Failed to create customer account.");
       return false;
+    }
+    return true;
+  };
+
+  const saveClientSubscription = async ({ clientId, planId, startDate, endDate }) => {
+    const existing = subscriptionSubscribers.find((item) => String(item.customerId ?? item.customer_id) === String(clientId));
+    const subscriber = {
+      ...(existing ?? {}),
+      id: existing?.id || `subscription-${Date.now()}`,
+      customerId: clientId,
+      planId,
+      startDate,
+      endDate,
+      createdAt: existing?.createdAt || new Date().toISOString()
+    };
+    setSubscriptionSubscribers((current) => {
+      const next = current.some((item) => item.id === subscriber.id)
+        ? current.map((item) => item.id === subscriber.id ? subscriber : item)
+        : [subscriber, ...current];
+      localStorage.setItem(SUBSCRIPTION_SUBSCRIBERS_KEY, JSON.stringify(next));
+      return next;
+    });
+    try {
+      await saveSubscriptionRequest(session.token, "/subscription-subscribers", "POST", subscriber);
+      setToast(existing ? "Customer subscription plan updated" : "Customer subscription plan added");
+    } catch (error) {
+      setToast(`Plan locally saved; database sync failed: ${error.message || "please retry"}`);
     }
     return true;
   };
@@ -3272,7 +3330,7 @@ function AdminApp({ session, onLogout, onSessionUpdate }) {
 
         {section === "dashboard" && <Dashboard data={data} totals={totals} setSection={openSection} />}
         {section === "clients" && <Clients data={data} addClient={addClient} openClientProfile={openClientProfile} deleteClientAndAccount={deleteClientAndAccount} />}
-        {section === "client-profile" && <ClientProfile data={data} clientId={selectedClientId} validationRows={activeValidation?.clientId === selectedClientId ? activeValidation.rows : []} backToClients={() => openSection("clients")} importClientExcel={importClientExcel} importClientPdf={importClientPdf} addManualClientVehicle={addManualClientVehicle} deleteClientVehicle={deleteClientVehicle} deleteClientAndAccount={deleteClientAndAccount} />}
+        {section === "client-profile" && <ClientProfile data={data} clientId={selectedClientId} validationRows={activeValidation?.clientId === selectedClientId ? activeValidation.rows : []} backToClients={() => openSection("clients")} importClientExcel={importClientExcel} importClientPdf={importClientPdf} addManualClientVehicle={addManualClientVehicle} deleteClientVehicle={deleteClientVehicle} deleteClientAndAccount={deleteClientAndAccount} subscriptionPlans={subscriptionPlans} subscriptionSubscribers={subscriptionSubscribers} onSaveSubscription={saveClientSubscription} />}
         {toast && <button className="toast" onClick={() => setToast("")}>{toast}</button>}
 
         {section === "fleet" && <Fleet data={data} updateVehicleFinance={updateVehicleFinance} updateVehicleCompliance={updateVehicleCompliance} createListing={createListing} />}
@@ -4167,9 +4225,40 @@ function ManualVehicleForm({ client, onSubmit }) {
   );
 }
 
-function ClientProfile({ data, clientId, validationRows = [], backToClients, importClientExcel, importClientPdf, addManualClientVehicle, deleteClientVehicle, deleteClientAndAccount }) {
+function ClientProfile({ data, clientId, validationRows = [], backToClients, importClientExcel, importClientPdf, addManualClientVehicle, deleteClientVehicle, deleteClientAndAccount, subscriptionPlans = [], subscriptionSubscribers = [], onSaveSubscription }) {
   const [entryMode, setEntryMode] = useState("excel");
+  const [planModalOpen, setPlanModalOpen] = useState(false);
+  const today = new Date().toISOString().slice(0, 10);
+  const availablePlans = Array.isArray(subscriptionPlans) ? subscriptionPlans : [];
   const client = getDataClient(data, clientId);
+  const assignedSubscription = client
+    ? subscriptionSubscribers.find((item) => String(item.customerId ?? item.customer_id) === String(client.id))
+    : null;
+  const assignedPlan = assignedSubscription
+    ? availablePlans.find((plan) => plan.id === assignedSubscription.planId)
+    : null;
+  const [planDraft, setPlanDraft] = useState({ planId: "", startDate: today, endDate: "" });
+
+  useEffect(() => {
+    if (!client?.id) return;
+    if (assignedSubscription) {
+      const currentPlan = availablePlans.find((plan) => plan.id === assignedSubscription.planId);
+      const startDate = assignedSubscription.startDate || today;
+      setPlanDraft({
+        planId: assignedSubscription.planId || "",
+        startDate,
+        endDate: assignedSubscription.endDate || subscriptionEndDateForCycle(startDate, currentPlan?.billingCycle)
+      });
+      return;
+    }
+    const firstPlan = availablePlans[0];
+    setPlanDraft((current) => ({
+      planId: current.planId && availablePlans.some((plan) => plan.id === current.planId) ? current.planId : firstPlan?.id || "",
+      startDate: current.startDate || today,
+      endDate: current.endDate || (firstPlan ? subscriptionEndDateForCycle(current.startDate || today, firstPlan.billingCycle) : "")
+    }));
+    if (availablePlans.length > 0) setPlanModalOpen(true);
+  }, [client?.id, assignedSubscription?.id, assignedSubscription?.planId, assignedSubscription?.startDate, assignedSubscription?.endDate, availablePlans]);
 
   if (!client) {
     return (
@@ -4198,6 +4287,25 @@ function ClientProfile({ data, clientId, validationRows = [], backToClients, imp
     ? excelClosingTotal
     : clientVehicles.reduce((sum, vehicle) => sum + liability(vehicle), 0);
   const excelLoanTotal = importedAssets.reduce((sum, row) => sum + toNumber(row.loanAmount), 0);
+  const selectedPlan = availablePlans.find((plan) => plan.id === planDraft.planId);
+  const updatePlanDraft = (event) => {
+    const { name, value } = event.target;
+    setPlanDraft((current) => {
+      const next = { ...current, [name]: value };
+      if (name === "planId") {
+        const nextPlan = availablePlans.find((plan) => plan.id === value);
+        next.endDate = subscriptionEndDateForCycle(current.startDate || today, nextPlan?.billingCycle);
+      }
+      if (name === "startDate") next.endDate = subscriptionEndDateForCycle(value, selectedPlan?.billingCycle);
+      return next;
+    });
+  };
+  const submitPlan = async (event) => {
+    event.preventDefault();
+    if (!client?.id || !planDraft.planId || !planDraft.startDate || !planDraft.endDate || !onSaveSubscription) return;
+    const saved = await onSaveSubscription({ clientId: client.id, ...planDraft });
+    if (saved !== false) setPlanModalOpen(false);
+  };
   const saveManualVehicle = (event) => {
     const saved = addManualClientVehicle(event, client.id);
     if (saved !== false) setEntryMode("excel");
@@ -4230,11 +4338,21 @@ function ClientProfile({ data, clientId, validationRows = [], backToClients, imp
                 Active client
               </span>
             </div>
+            <button className="client-profile-plan client-profile-plan-button" type="button" onClick={() => setPlanModalOpen(true)}>
+              <span className="client-profile-plan-icon"><Icon name="money" /></span>
+              <span className="client-profile-plan-copy">
+                <small>Subscription plan</small>
+                <strong>{assignedPlan?.name || "Add a plan for this customer"}</strong>
+              </span>
+              <em>{assignedPlan ? assignedPlan.billingCycle : "Select plan"}</em>
+              <Icon name="chevron-right" />
+            </button>
+        </div>
+        </div>
         <div className="profile-total">
           <span>Closing total</span>
           <strong>{formatMoney(totalClosing)}</strong>
-        </div>
-        </div>
+          <small>Current finance liability</small>
         </div>
       </section>
       <section className="profile-stats">
@@ -4373,6 +4491,36 @@ function ClientProfile({ data, clientId, validationRows = [], backToClients, imp
           <Empty text="No vehicles found for this client." />
         )}
       </section>
+
+      {planModalOpen && (
+        <div className={`client-modal-backdrop${assignedSubscription ? " client-plan-edit-backdrop" : " client-plan-required-backdrop"}`} role="presentation" onMouseDown={(event) => { if (assignedSubscription && event.target === event.currentTarget) setPlanModalOpen(false); }}>
+          <section className="client-modal subscription-plan-modal" role="dialog" aria-modal="true" aria-labelledby="client-plan-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="client-modal-head">
+              <div>
+                <span className="client-head-icon"><Icon name="money" /></span>
+                <div><h2 id="client-plan-title">Assign subscription plan</h2><span>{client.name} ke account ke liye plan select karein.</span></div>
+              </div>
+              {assignedSubscription && <button className="icon-button" type="button" onClick={() => setPlanModalOpen(false)} aria-label="Close plan dialog"><Icon name="close" /></button>}
+            </div>
+            {availablePlans.length === 0 ? (
+              <div className="client-plan-empty-state"><Icon name="info" /><p>Subscription workspace me pehle ek plan create karein.</p></div>
+            ) : (
+              <form className="client-form subscription-client-plan-form" onSubmit={submitPlan}>
+                <label>Plan
+                  <select name="planId" value={planDraft.planId} onChange={updatePlanDraft} required>
+                    <option value="">Select plan</option>
+                    {availablePlans.map((plan) => <option value={plan.id} key={plan.id}>{plan.name} · ₹{Number(plan.price || plan.pricingTiers?.[0]?.rate || 0).toLocaleString("en-IN")} / {plan.billingCycle}</option>)}
+                  </select>
+                </label>
+                <label>Start date<input name="startDate" type="date" value={planDraft.startDate} onChange={updatePlanDraft} required /></label>
+                <label>Expiry date<input name="endDate" type="date" value={planDraft.endDate} readOnly required /></label>
+                {selectedPlan && <div className="client-plan-save-summary"><span><strong>{selectedPlan.billingCycle}</strong> billing cycle</span><span>Expiry automatically calculated</span></div>}
+                <div className="client-modal-actions">{assignedSubscription ? <button className="secondary-button" type="button" onClick={() => setPlanModalOpen(false)}>Cancel</button> : <button className="secondary-button client-plan-back-button" type="button" onClick={backToClients}><span aria-hidden="true">←</span>Back</button>}<button type="submit"><Icon name="check" />{assignedSubscription ? "Update plan" : "Save plan"}</button></div>
+              </form>
+            )}
+          </section>
+        </div>
+      )}
     </section>
   );
 }
