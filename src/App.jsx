@@ -2,7 +2,6 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { MarketplaceChat, ChatRequestButton, useMarketplaceChat } from "./MarketplaceChat";
 import loginBackground from "./assets/background.png";
 import myFleetLogo from "./assets/My_Fleet_512x512.png";
-import kuberLogo from "./assets/logo.png";
 import * as pdfjsLib from "pdfjs-dist";
 import { jsPDF } from "jspdf";
 import { createWorker } from "tesseract.js";
@@ -208,13 +207,17 @@ function subscriptionInvoiceFileName(customerName = "customer") {
     .replace(/[^a-z0-9]+/gi, "-")
     .replace(/^-+|-+$/g, "")
     .toLowerCase() || "customer";
-  return `kuber-finance-invoice-${safeName}.pdf`;
+  return `aakash-finance-invoice-${safeName}.pdf`;
 }
 
-async function imageUrlToDataUrl(url) {
+async function imageUrlToDataUrl(url, timeoutMs = 8000) {
   if (!url) return "";
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timeout = typeof window !== "undefined" && controller
+    ? window.setTimeout(() => controller.abort(), timeoutMs)
+    : null;
   try {
-    const response = await fetch(url, { mode: "cors" });
+    const response = await fetch(url, { mode: "cors", signal: controller?.signal });
     if (!response.ok) return "";
     const blob = await response.blob();
     return await new Promise((resolve) => {
@@ -225,160 +228,413 @@ async function imageUrlToDataUrl(url) {
     });
   } catch {
     return "";
+  } finally {
+    if (timeout) window.clearTimeout(timeout);
+  }
+}
+
+async function imageUrlToRoundedDataUrl(url, timeoutMs = 8000) {
+  const dataUrl = await imageUrlToDataUrl(url, timeoutMs);
+  if (!dataUrl || typeof Image === "undefined") return dataUrl;
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      const width = image.naturalWidth || image.width;
+      const height = image.naturalHeight || image.height;
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context || !width || !height) {
+        resolve(dataUrl);
+        return;
+      }
+      context.drawImage(image, 0, 0, width, height);
+      const pixels = context.getImageData(0, 0, width, height);
+      const inset = Math.max(1, Math.round(Math.min(width, height) * 0.008));
+      const radius = Math.round(Math.min(width, height) * 0.13);
+      const left = inset;
+      const right = width - inset - 1;
+      const top = inset;
+      const bottom = height - inset - 1;
+      const innerLeft = left + radius;
+      const innerRight = right - radius;
+      const innerTop = top + radius;
+      const innerBottom = bottom - radius;
+      for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          const outsideBox = x < left || x > right || y < top || y > bottom;
+          const dx = x < innerLeft ? innerLeft - x : x > innerRight ? x - innerRight : 0;
+          const dy = y < innerTop ? innerTop - y : y > innerBottom ? y - innerBottom : 0;
+          if (outsideBox || (dx > 0 && dy > 0 && (dx * dx + dy * dy > radius * radius))) {
+            pixels.data[(y * width + x) * 4 + 3] = 0;
+          }
+        }
+      }
+      context.putImageData(pixels, 0, 0);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    image.onerror = () => resolve(dataUrl);
+    image.src = dataUrl;
+  });
+}
+
+function drawInvoiceIcon(doc, kind, x, y, size = 8, colors = {}) {
+  const background = colors.background || [226, 238, 252];
+  const ink = colors.ink || [18, 49, 90];
+  const centerX = x + size / 2;
+  const centerY = y + size / 2;
+  const radius = size / 2;
+  doc.setFillColor(...background);
+  doc.circle(centerX, centerY, radius, "F");
+  doc.setDrawColor(...ink);
+  doc.setFillColor(...ink);
+  doc.setLineWidth(0.55);
+
+  if (kind === "user") {
+    doc.circle(centerX, centerY - 1.4, 1.35, "F");
+    doc.roundedRect(centerX - 2.7, centerY + 0.7, 5.4, 2.6, 1.2, 1.2, "F");
+  } else if (kind === "phone") {
+    doc.roundedRect(centerX - 1.8, centerY - 2.9, 3.6, 5.8, 1, 1, "S");
+    doc.line(centerX - 0.9, centerY - 1.8, centerX + 0.9, centerY - 1.8);
+    doc.line(centerX - 0.9, centerY + 1.3, centerX + 0.9, centerY + 1.3);
+    doc.circle(centerX, centerY + 2.1, 0.3, "F");
+  } else if (kind === "mail") {
+    doc.roundedRect(centerX - 3.1, centerY - 2.2, 6.2, 4.4, 0.6, 0.6, "S");
+    doc.line(centerX - 2.7, centerY - 1.7, centerX, centerY + 0.4);
+    doc.line(centerX, centerY + 0.4, centerX + 2.7, centerY - 1.7);
+  } else if (kind === "file") {
+    doc.roundedRect(centerX - 2.4, centerY - 3, 4.8, 6, 0.5, 0.5, "S");
+    doc.line(centerX - 1.3, centerY - 0.7, centerX + 1.3, centerY - 0.7);
+    doc.line(centerX - 1.3, centerY + 1, centerX + 1.3, centerY + 1);
+  } else if (kind === "car") {
+    doc.roundedRect(centerX - 3, centerY - 1, 6, 2.8, 0.6, 0.6, "F");
+    doc.line(centerX - 2.1, centerY - 1, centerX - 1.1, centerY - 2.2);
+    doc.line(centerX - 1.1, centerY - 2.2, centerX + 1.2, centerY - 2.2);
+    doc.line(centerX + 1.2, centerY - 2.2, centerX + 2.1, centerY - 1);
+    doc.setFillColor(...background);
+    doc.circle(centerX - 1.9, centerY + 1.7, 0.75, "F");
+    doc.circle(centerX + 1.9, centerY + 1.7, 0.75, "F");
+  } else if (kind === "crown") {
+    doc.triangle(centerX - 3, centerY - 1.7, centerX - 1.2, centerY + 0.8, centerX - 1.6, centerY - 1, "F");
+    doc.triangle(centerX - 1.6, centerY - 1, centerX, centerY + 0.8, centerX, centerY - 2.3, "F");
+    doc.triangle(centerX, centerY - 2.3, centerX + 1.2, centerY + 0.8, centerX + 3, centerY - 1.7, "F");
+    doc.line(centerX - 2.5, centerY + 1.2, centerX + 2.5, centerY + 1.2);
+  } else if (kind === "calendar") {
+    doc.roundedRect(centerX - 2.8, centerY - 2.6, 5.6, 5.3, 0.5, 0.5, "S");
+    doc.line(centerX - 2.8, centerY - 0.9, centerX + 2.8, centerY - 0.9);
+    doc.line(centerX - 1.4, centerY - 3.3, centerX - 1.4, centerY - 1.6);
+    doc.line(centerX + 1.4, centerY - 3.3, centerX + 1.4, centerY - 1.6);
+  } else if (kind === "wallet") {
+    doc.roundedRect(centerX - 3.1, centerY - 2.2, 6.2, 4.5, 0.8, 0.8, "F");
+    doc.setFillColor(...background);
+    doc.roundedRect(centerX + 0.5, centerY - 0.8, 2.4, 1.6, 0.5, 0.5, "F");
+    doc.circle(centerX + 1.3, centerY, 0.25, "F");
+  } else if (kind === "card") {
+    doc.roundedRect(centerX - 3.2, centerY - 2.2, 6.4, 4.4, 0.6, 0.6, "F");
+    doc.setFillColor(...background);
+    doc.rect(centerX - 3.2, centerY - 0.7, 6.4, 0.55, "F");
+    doc.rect(centerX - 1.8, centerY + 1, 2.2, 0.45, "F");
+  } else if (kind === "shield") {
+    doc.line(centerX, centerY - 2.5, centerX + 2.2, centerY - 1.3);
+    doc.line(centerX + 2.2, centerY - 1.3, centerX + 1.5, centerY + 1.4);
+    doc.line(centerX + 1.5, centerY + 1.4, centerX, centerY + 2.5);
+    doc.line(centerX, centerY + 2.5, centerX - 1.5, centerY + 1.4);
+    doc.line(centerX - 1.5, centerY + 1.4, centerX - 2.2, centerY - 1.3);
+    doc.line(centerX - 2.2, centerY - 1.3, centerX, centerY - 2.5);
+  } else if (kind === "info") {
+    doc.circle(centerX, centerY - 1.7, 0.4, "F");
+    doc.line(centerX, centerY - 0.5, centerX, centerY + 2.2);
+  } else if (kind === "check") {
+    doc.line(centerX - 2.2, centerY, centerX - 0.6, centerY + 1.7);
+    doc.line(centerX - 0.6, centerY + 1.7, centerX + 2.5, centerY - 1.8);
+  } else if (kind === "refresh") {
+    doc.circle(centerX, centerY, 2.4, "S");
+    doc.triangle(centerX + 1.2, centerY - 2.3, centerX + 2.7, centerY - 2.2, centerX + 2.1, centerY - 0.9, "F");
+    doc.triangle(centerX - 1.2, centerY + 2.3, centerX - 2.7, centerY + 2.2, centerX - 2.1, centerY + 0.9, "F");
+  } else {
+    doc.roundedRect(centerX - 2.5, centerY - 2.5, 5, 5, 0.7, 0.7, "S");
+  }
+}
+
+function drawInvoiceSectionIcon(doc, x, y, kind) {
+  const navy = [18, 49, 90];
+  doc.setFillColor(...navy);
+  doc.roundedRect(x, y, 8, 8, 1.1, 1.1, "F");
+  doc.setDrawColor(255, 255, 255);
+  doc.setLineWidth(0.8);
+  if (kind === "summary") {
+    doc.line(x + 2, y + 2.5, x + 6, y + 2.5);
+    doc.line(x + 2, y + 4, x + 6, y + 4);
+    doc.line(x + 2, y + 5.5, x + 5.1, y + 5.5);
+  } else {
+    doc.line(x + 1.7, y + 2.5, x + 6.3, y + 2.5);
+    doc.line(x + 1.7, y + 4.1, x + 6.3, y + 4.1);
+    doc.line(x + 1.7, y + 5.7, x + 4.8, y + 5.7);
   }
 }
 
 async function createSubscriptionInvoicePdf(row, paymentDetails = {}) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageWidth = 210;
-  const left = 18;
-  const right = pageWidth - 18;
-  const navy = [18, 49, 90];
-  const gold = [240, 165, 0];
-  const slate = [91, 111, 139];
-  const light = [244, 247, 251];
-  const green = [47, 153, 122];
+  const left = 9;
+  const right = pageWidth - 9;
+  const contentWidth = pageWidth - 18;
+  const navy = [11, 42, 82];
+  const navyMid = [22, 59, 108];
+  const gold = [244, 181, 34];
+  const slate = [74, 98, 132];
+  const light = [244, 248, 253];
+  const iconBlue = [226, 238, 252];
+  const green = [21, 126, 94];
   const customerName = row.customer?.name || "Customer";
   const amount = Number(row.currentPrice || 0);
   const invoiceDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
   const invoiceNumber = `INV-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
   const paymentLink = normalizeSubscriptionPaymentLink(paymentDetails.paymentLink);
   const qrUrl = subscriptionQrUrl(paymentLink, paymentDetails.qrCodeUrl, amount);
-  const logoDataUrl = await imageUrlToDataUrl(kuberLogo);
-  const qrDataUrl = await imageUrlToDataUrl(qrUrl);
+  const [logoDataUrl, qrDataUrl] = await Promise.all([
+    imageUrlToRoundedDataUrl(myFleetLogo, 5000),
+    imageUrlToDataUrl(qrUrl, 7000)
+  ]);
 
   doc.setFillColor(...navy);
-  doc.rect(0, 0, pageWidth, 48, "F");
+  doc.rect(0, 0, pageWidth, 42, "F");
+  doc.setFillColor(...navyMid);
+  doc.triangle(0, 0, 28, 0, 0, 28, "F");
+  doc.setFillColor(15, 51, 96);
+  doc.triangle(145, 0, 210, 0, 210, 42, "F");
+  doc.setFillColor(19, 62, 113);
+  doc.triangle(172, 0, 210, 0, 210, 25, "F");
+  doc.setFillColor(...gold);
+  doc.rect(0, 40.5, pageWidth, 1.4, "F");
   if (logoDataUrl) {
-    doc.addImage(logoDataUrl, "PNG", left, 9, 21, 21, undefined, "FAST");
+    doc.addImage(logoDataUrl, "PNG", 10, 8.5, 25, 25, undefined, "FAST");
   } else {
     doc.setFillColor(...gold);
-    doc.roundedRect(left, 13, 13, 13, 2, 2, "F");
+    doc.roundedRect(10, 14, 15, 15, 2, 2, "F");
     doc.setDrawColor(...navy);
     doc.setLineWidth(1.1);
-    doc.line(left + 3, 23, left + 6.5, 16.5);
-    doc.line(left + 6.5, 16.5, left + 10, 23);
+    doc.line(13, 26, 17.5, 18);
+    doc.line(17.5, 18, 22, 26);
   }
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(15);
-  doc.text("KUBER FINANCE", left + 25, 19);
-  doc.setFontSize(7.5);
+  doc.setFontSize(17);
+  doc.text("AAKASH", 40, 18);
+  const aakashWidth = doc.getTextWidth("AAKASH");
+  doc.setTextColor(...gold);
+  doc.text("FINANCE", 40 + aakashWidth + 2, 18);
+  doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(193, 211, 232);
-  doc.text("Fleet subscription management", left + 25, 26);
+  doc.text("Fleet subscription management", 40, 26);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(18);
+  doc.setFontSize(16);
   doc.setTextColor(255, 255, 255);
-  doc.text("SUBSCRIPTION INVOICE", right, 18, { align: "right" });
+  const invoiceTitle = "SUBSCRIPTION";
+  const invoiceWord = "INVOICE";
+  const invoiceWordWidth = doc.getTextWidth(invoiceWord);
+  const invoiceTitleWidth = doc.getTextWidth(invoiceTitle);
+  doc.text(invoiceTitle, right - invoiceWordWidth - 3 - invoiceTitleWidth, 17, { align: "left" });
+  doc.setTextColor(...gold);
+  doc.text(invoiceWord, right - invoiceWordWidth, 17, { align: "left" });
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
+  doc.setFontSize(8.5);
   doc.setTextColor(193, 211, 232);
-  doc.text(invoiceNumber, right, 27, { align: "right" });
+  doc.text(invoiceNumber, right, 26, { align: "right" });
+  drawInvoiceIcon(doc, "calendar", 176, 29.5, 5.5, { background: [27, 67, 116], ink: [235, 243, 253] });
   doc.text(invoiceDate, right, 33, { align: "right" });
 
   doc.setFillColor(...light);
-  doc.roundedRect(left, 59, pageWidth - 36, 36, 3, 3, "F");
+  doc.roundedRect(left, 49, contentWidth, 32, 3, 3, "F");
+  doc.setFillColor(...gold);
+  doc.roundedRect(left, 49, 2.3, 32, 1.2, 1.2, "F");
+  drawInvoiceIcon(doc, "user", 15, 55, 11, { background: iconBlue, ink: navy });
   doc.setTextColor(...slate);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  doc.text("BILL TO", left + 8, 68);
+  doc.setFontSize(8.5);
+  doc.text("BILL TO", 31, 57);
   doc.setTextColor(...navy);
-  doc.setFontSize(14);
-  doc.text(String(customerName), left + 8, 77);
+  doc.setFontSize(14.5);
+  doc.text(String(customerName), 31, 66);
+  drawInvoiceIcon(doc, "phone", 31, 69, 5.5, { background: light, ink: navy });
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
+  doc.setFontSize(9.5);
   doc.setTextColor(...slate);
-  doc.text(String(row.customer?.phone || "Phone not added"), left + 8, 85);
-  doc.text(String(row.customer?.email || "Fleet customer"), right - 8, 77, { align: "right" });
-  doc.text("Subscription renewal invoice", right - 8, 86, { align: "right" });
+  doc.text(String(row.customer?.phone || "Phone not added"), 39, 73);
+  doc.setDrawColor(177, 199, 225);
+  doc.setLineWidth(0.35);
+  doc.line(136, 54, 136, 76);
+  drawInvoiceIcon(doc, "mail", 143, 56, 5.5, { background: light, ink: navy });
+  doc.text(String(row.customer?.email || "Fleet customer"), 151, 60);
+  drawInvoiceIcon(doc, "file", 143, 66.5, 5.5, { background: light, ink: navy });
+  doc.text("Subscription renewal invoice", 151, 71);
 
   doc.setTextColor(...navy);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.text("SUBSCRIPTION SUMMARY", left, 108);
-  const tableTop = 114;
-  const tableHeight = 54;
+  doc.setFontSize(12.5);
+  drawInvoiceSectionIcon(doc, left, 88, "summary");
+  doc.text("SUBSCRIPTION SUMMARY", 20, 94);
+  doc.setDrawColor(...gold);
+  doc.setLineWidth(1.2);
+  doc.line(20, 96.5, 31, 96.5);
+  doc.setFillColor(...light);
+  doc.roundedRect(176, 87.5, 25, 8, 2.5, 2.5, "F");
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...slate);
+  doc.text("Plan Details", 188.5, 92.6, { align: "center" });
+  const tableTop = 99;
+  const tableHeight = 63;
   doc.setFillColor(255, 255, 255);
   doc.setDrawColor(216, 225, 236);
-  doc.roundedRect(left, tableTop, pageWidth - 36, tableHeight, 2, 2, "FD");
+  doc.roundedRect(left, tableTop, contentWidth, tableHeight, 2.5, 2.5, "FD");
   doc.setFillColor(...navy);
-  doc.rect(left, tableTop, pageWidth - 36, 11, "F");
+  doc.rect(left, tableTop, contentWidth, 12, "F");
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(8);
-  doc.text("ITEM", left + 8, tableTop + 7);
-  doc.text("DETAIL", right - 8, tableTop + 7, { align: "right" });
+  doc.setFontSize(9);
+  doc.text("ITEM", 16, tableTop + 7.5);
+  doc.text("DETAIL", right - 7, tableTop + 7.5, { align: "right" });
   const summaryRows = [
-    ["Plan", row.plan?.name || "Subscription plan"],
-    ["Active vehicles", String(row.vehicleCount ?? 0)],
-    ["Billing cycle", row.plan?.billingCycle || "Monthly"],
-    ["Expiry date", formatSubscriptionDate(row.endDate)]
+    ["Plan", row.plan?.name || "Subscription plan", "crown"],
+    ["Active vehicles", String(row.vehicleCount ?? 0), "car"],
+    ["Billing cycle", row.plan?.billingCycle || "Monthly", "refresh"],
+    ["Expiry date", formatSubscriptionDate(row.endDate), "calendar"]
   ];
-  summaryRows.forEach(([label, value], index) => {
-    const y = tableTop + 21 + index * 10;
+  summaryRows.forEach(([label, value, icon], index) => {
+    const rowHeight = 12.75;
+    const y = tableTop + 12 + rowHeight * index;
+    drawInvoiceIcon(doc, icon, 15, y + 2, 8, { background: iconBlue, ink: navy });
     doc.setDrawColor(232, 237, 244);
-    if (index > 0) doc.line(left + 7, y - 5, right - 7, y - 5);
+    if (index > 0) doc.line(12, y, 198, y);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...slate);
-    doc.text(label, left + 8, y);
+    doc.setFontSize(10);
+    doc.text(label, 32, y + 10);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...navy);
-    doc.text(value, right - 8, y, { align: "right" });
+    doc.text(value, right - 7, y + 10, { align: "right" });
   });
 
-  doc.setFillColor(255, 247, 226);
-  doc.setDrawColor(249, 207, 116);
-  doc.roundedRect(left, 178, pageWidth - 36, 25, 3, 3, "FD");
-  doc.setTextColor(...slate);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.text("TOTAL PAYABLE", left + 10, 193);
+  doc.setFillColor(255, 249, 232);
+  doc.setDrawColor(249, 190, 52);
+  doc.setLineWidth(0.45);
+  doc.roundedRect(left, 169, contentWidth, 27, 3, 3, "FD");
+  drawInvoiceIcon(doc, "wallet", 15, 174, 11, { background: [255, 224, 139], ink: navy });
   doc.setTextColor(...navy);
-  doc.setFontSize(18);
-  doc.text(`Rs. ${amount.toLocaleString("en-IN")}`, right - 10, 193, { align: "right" });
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12.5);
+  doc.text("TOTAL PAYABLE", 31, 181);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...slate);
+  doc.setFontSize(9.5);
+  doc.text("Inclusive of applicable charges", 31, 187);
+  doc.setTextColor(...navy);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.text(`Rs. ${amount.toLocaleString("en-IN")}`, right - 7, 187, { align: "right" });
 
   doc.setTextColor(...navy);
-  doc.setFontSize(11);
-  doc.text("PAYMENT DETAILS", left, 219);
+  doc.setFontSize(12.5);
+  drawInvoiceSectionIcon(doc, left, 204, "payment");
+  doc.text("PAYMENT DETAILS", 20, 210);
+  doc.setDrawColor(...gold);
+  doc.setLineWidth(1.2);
+  doc.line(20, 212.5, 31, 212.5);
   doc.setFillColor(...light);
-  doc.roundedRect(left, 225, pageWidth - 36, 55, 3, 3, "F");
+  doc.roundedRect(left, 216, contentWidth, 58, 3, 3, "F");
+  doc.setDrawColor(177, 199, 225);
+  doc.setLineWidth(0.35);
+  doc.line(137, 222, 137, 254);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
+  doc.setFontSize(12.5);
   doc.setTextColor(...navy);
-  doc.text("UPI / GPay", left + 9, 237);
+  doc.text("UPI / GPay", 16, 229);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
+  doc.setFontSize(9);
   doc.setTextColor(...slate);
-  doc.text("Scan to pay the exact subscription amount", left + 9, 245);
+  doc.text("Scan to pay the exact subscription amount", 16, 237);
+  const hasPaymentValue = Boolean(paymentDetails.paymentLink || paymentDetails.qrCodeUrl);
   const paymentValue = String(paymentDetails.paymentLink || paymentDetails.qrCodeUrl || "Payment details not configured");
-  doc.text(doc.splitTextToSize(paymentValue, 83), left + 9, 254);
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(24, 240, 108, 8.5, 2, 2, "F");
+  drawInvoiceIcon(doc, hasPaymentValue ? "card" : "info", 16, 240.8, 7, { background: iconBlue, ink: navy });
+  doc.setTextColor(...navy);
+  doc.setFontSize(8.5);
+  doc.text(doc.splitTextToSize(paymentValue, 99).slice(0, 1), 27, 245.6);
+  drawInvoiceIcon(doc, "info", 16, 249.2, 7, { background: iconBlue, ink: navy });
+  doc.setTextColor(...slate);
+  doc.setFontSize(8.5);
+  doc.text(qrDataUrl ? "Amount-specific QR generated for this invoice." : "If QR is not available, please contact support.", 27, 254);
+
+  doc.setFillColor(215, 247, 235);
+  doc.roundedRect(left, 260, contentWidth, 14, 3, 3, "F");
+  drawInvoiceIcon(doc, "check", 16, 263, 8, { background: [27, 159, 119], ink: [255, 255, 255] });
   doc.setTextColor(...green);
   doc.setFont("helvetica", "bold");
-  doc.text("This is a computer-generated invoice.", left + 9, 272);
+  doc.setFontSize(9.5);
+  doc.text("This is a computer-generated invoice.", 27, 269);
+  doc.setFont("helvetica", "bold");
   if (qrDataUrl) {
-    doc.addImage(qrDataUrl, "PNG", right - 51, 231, 39, 39);
-    doc.setTextColor(...navy);
-    doc.setFontSize(8);
-    doc.text("SCAN TO PAY", right - 31.5, 275, { align: "center" });
-  } else {
-    doc.setDrawColor(170, 184, 202);
-    doc.rect(right - 51, 231, 39, 39);
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(207, 223, 241);
+    doc.roundedRect(145, 220, 47, 35, 2, 2, "FD");
+    doc.addImage(qrDataUrl, "PNG", 153, 222, 31, 31, undefined, "FAST");
     doc.setTextColor(...slate);
-    doc.setFontSize(8);
-    doc.text("QR unavailable", right - 31.5, 251, { align: "center" });
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.5);
+    doc.text("SCAN TO PAY", 168.5, 254, { align: "center" });
+    doc.setTextColor(...navy);
+  } else {
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(207, 223, 241);
+    doc.roundedRect(145, 220, 47, 35, 2, 2, "FD");
+    doc.setDrawColor(198, 216, 237);
+    doc.setLineDashPattern([1.2, 1.2], 0);
+    doc.rect(153, 224, 31, 27);
+    doc.setLineDashPattern([], 0);
+    drawInvoiceIcon(doc, "card", 162, 231, 8, { background: [247, 250, 254], ink: [70, 105, 151] });
+    doc.setTextColor(...slate);
+    doc.setFontSize(8.5);
+    doc.text("QR unavailable", 168.5, 248, { align: "center" });
   }
 
-  doc.setDrawColor(216, 225, 236);
-  doc.line(left, 291, right, 291);
-  doc.setTextColor(...slate);
+  doc.setFillColor(...navy);
+  doc.rect(0, 285, pageWidth, 12, "F");
+  doc.setFillColor(...gold);
+  doc.rect(0, 283.8, pageWidth, 1.2, "F");
+  doc.setFillColor(...navyMid);
+  doc.triangle(174, 285, 192, 285, 205, 297, "F");
+  doc.setFillColor(...gold);
+  doc.triangle(184, 285, 192, 285, 207, 297, "F");
+  if (logoDataUrl) doc.addImage(logoDataUrl, "PNG", 10, 286.2, 9, 9, undefined, "FAST");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9.5);
+  doc.text("AAKASH FINANCE", 23, 291.5);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.text("Thank you for choosing Kuber Finance", left, 299);
-  doc.text("No signature required", right, 299, { align: "right" });
+  doc.setTextColor(193, 211, 232);
+  doc.setFontSize(6.5);
+  doc.text("Fleet subscription management", 23, 295);
 
   const blob = doc.output("blob");
   const fileName = subscriptionInvoiceFileName(customerName);
   return { blob, fileName, file: new File([blob], fileName, { type: "application/pdf" }) };
+}
+
+function downloadSubscriptionInvoiceFile(invoice) {
+  if (!invoice?.blob || invoice.blob.size === 0) throw new Error("Generated invoice PDF is empty.");
+  const downloadUrl = URL.createObjectURL(invoice.blob);
+  const downloadLink = document.createElement("a");
+  downloadLink.href = downloadUrl;
+  downloadLink.download = invoice.fileName;
+  downloadLink.rel = "noopener";
+  downloadLink.style.display = "none";
+  document.body.appendChild(downloadLink);
+  downloadLink.click();
+  downloadLink.remove();
+  window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 30000);
 }
 
 function clearSession() {
@@ -3132,7 +3388,11 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
   const [customerLoading, setCustomerLoading] = useState(false);
   const [customerError, setCustomerError] = useState("");
   const [subscriptionError, setSubscriptionError] = useState("");
+  const [paymentSaveState, setPaymentSaveState] = useState("saved");
+  const [invoiceDownloadId, setInvoiceDownloadId] = useState("");
+  const [invoiceDownloadError, setInvoiceDownloadError] = useState("");
   const paymentSaveTimer = useRef(null);
+  const paymentEditedRef = useRef(false);
   const sidebarItems = [
     ["dashboard", "Dashboard", "home"],
     ["plans", "Plans", "money"],
@@ -3171,7 +3431,9 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
         setPlans(hydratedPlans);
         setSubscribers(Array.isArray(remote.subscribers) && (remote.subscribers.length || remotePlans.length) ? remote.subscribers : localSubscribers);
         const remotePayment = remote.paymentDetails && (remote.paymentDetails.paymentLink || remote.paymentDetails.qrCodeUrl) ? remote.paymentDetails : localPayment;
-        setPaymentDetails(remotePayment);
+        // Do not replace a value the admin started typing while the initial
+        // workspace request is still resolving.
+        if (!paymentEditedRef.current) setPaymentDetails(remotePayment);
         setSubscriptionError("");
         const persistPlans = Promise.all(plansToPersist.map((plan) => saveSubscriptionRequest(session.token, "/subscription-plans", "POST", plan)));
         persistPlans.catch((error) => {
@@ -3215,8 +3477,17 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
   };
 
   const persistPaymentDetails = (next) => {
-    saveSubscriptionRequest(session.token, "/subscription-payment", "PUT", next)
-      .catch((error) => setSubscriptionError(error.message || "Payment details database me save nahi ho sake."));
+    setPaymentSaveState("saving");
+    return saveSubscriptionRequest(session.token, "/subscription-payment", "PUT", next)
+      .then(() => {
+        setPaymentSaveState("saved");
+        return true;
+      })
+      .catch((error) => {
+        setPaymentSaveState("error");
+        setSubscriptionError(error.message || "Payment details database me save nahi ho sake.");
+        return false;
+      });
   };
 
   useEffect(() => () => {
@@ -3224,6 +3495,8 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
   }, []);
 
   const updatePaymentDetails = (updater) => {
+    paymentEditedRef.current = true;
+    setPaymentSaveState("unsaved");
     setPaymentDetails((current) => {
       const next = typeof updater === "function" ? updater(current) : { ...current, ...updater };
       try {
@@ -3235,6 +3508,11 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
       paymentSaveTimer.current = window.setTimeout(() => persistPaymentDetails(next), 500);
       return next;
     });
+  };
+
+  const savePaymentDetailsNow = () => {
+    if (paymentSaveTimer.current) window.clearTimeout(paymentSaveTimer.current);
+    return persistPaymentDetails(paymentDetails);
   };
 
   const sendSubscriptionReminder = async (row) => {
@@ -3266,21 +3544,28 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
     try {
       invoice = await createSubscriptionInvoicePdf(row, paymentDetails);
       if (typeof navigator !== "undefined" && navigator.share && navigator.canShare && navigator.canShare({ files: [invoice.file] })) {
-        await navigator.share({ title: "Kuber Finance subscription invoice", text: finalMessage, files: [invoice.file] });
+        await navigator.share({ title: "Aakash Finance subscription invoice", text: finalMessage, files: [invoice.file] });
         return;
       }
-      const downloadUrl = URL.createObjectURL(invoice.blob);
-      const downloadLink = document.createElement("a");
-      downloadLink.href = downloadUrl;
-      downloadLink.download = invoice.fileName;
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      downloadLink.remove();
-      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      downloadSubscriptionInvoiceFile(invoice);
     } catch (error) {
       console.error("Subscription invoice PDF failed", error);
     }
     window.open(`https://wa.me/${normalizedPhone}?text=${encodeURIComponent(finalMessage)}`, "_blank", "noopener,noreferrer");
+  };
+
+  const downloadSubscriptionInvoice = async (row) => {
+    setInvoiceDownloadId(row.id);
+    setInvoiceDownloadError("");
+    try {
+      const invoice = await createSubscriptionInvoicePdf(row, paymentDetails);
+      downloadSubscriptionInvoiceFile(invoice);
+    } catch (error) {
+      console.error("Subscription invoice PDF download failed", error);
+      setInvoiceDownloadError("Invoice PDF download nahi ho saki. Dobara try karein.");
+    } finally {
+      setInvoiceDownloadId("");
+    }
   };
 
   useEffect(() => {
@@ -3345,7 +3630,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
         {activeView === "dashboard" ? <SubscriptionPanel plans={plans} subscribers={subscribers} data={customerData} subscriptionError={subscriptionError} /> : activeView === "plans" ? (
           <SubscriptionPlans plans={plans} onCreate={createPlan} onDelete={deletePlan} />
         ) : activeView === "subscribers" ? (
-          <SubscriptionSubscribers data={customerData} plans={plans} subscribers={subscribers} paymentDetails={paymentDetails} onPaymentDetailsChange={updatePaymentDetails} onCreate={createSubscriber} onDelete={deleteSubscriber} onSendReminder={sendSubscriptionReminder} loading={customerLoading} error={customerError || subscriptionError} onOpenPlans={() => setActiveView("plans")} />
+          <SubscriptionSubscribers data={customerData} plans={plans} subscribers={subscribers} paymentDetails={paymentDetails} paymentSaveState={paymentSaveState} invoiceDownloadId={invoiceDownloadId} invoiceDownloadError={invoiceDownloadError} onPaymentDetailsChange={updatePaymentDetails} onSavePaymentDetails={savePaymentDetailsNow} onCreate={createSubscriber} onDelete={deleteSubscriber} onSendReminder={sendSubscriptionReminder} onDownloadInvoice={downloadSubscriptionInvoice} loading={customerLoading} error={customerError || subscriptionError} onOpenPlans={() => setActiveView("plans")} />
         ) : activeView === "customers" ? (
           <SubscriptionCustomers
             data={customerData}
@@ -3459,9 +3744,10 @@ function SubscriptionPlans({ plans, onCreate, onDelete }) {
   );
 }
 
-function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, onPaymentDetailsChange, onCreate, onDelete, onSendReminder, loading, error, onOpenPlans }) {
+function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, paymentSaveState, invoiceDownloadId, invoiceDownloadError, onPaymentDetailsChange, onSavePaymentDetails, onCreate, onDelete, onSendReminder, onDownloadInvoice, loading, error, onOpenPlans }) {
   const [formOpen, setFormOpen] = useState(false);
   const [testDateMode, setTestDateMode] = useState(false);
+  const [paymentEditing, setPaymentEditing] = useState(() => !String(paymentDetails.paymentLink || "").trim());
   const today = new Date().toISOString().slice(0, 10);
   const [draft, setDraft] = useState({ customerId: "", planId: "", startDate: today, endDate: "" });
   const selectedCustomerVehicleCount = subscriptionVehicleCount(data, draft.customerId);
@@ -3469,6 +3755,15 @@ function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, onP
   const selectedPlanPrice = subscriptionPlanPrice(selectedPlan, selectedCustomerVehicleCount);
   const selectedPlanRate = subscriptionPlanRate(selectedPlan, Math.max(1, selectedCustomerVehicleCount));
   const configuredPaymentLink = normalizeSubscriptionPaymentLink(paymentDetails.paymentLink);
+
+  useEffect(() => {
+    if (paymentSaveState === "saved" && String(paymentDetails.paymentLink || "").trim()) setPaymentEditing(false);
+  }, [paymentDetails.paymentLink, paymentSaveState]);
+
+  const savePayment = async () => {
+    const saved = await onSavePaymentDetails();
+    if (saved) setPaymentEditing(false);
+  };
 
   const updateDraft = (event) => {
     const { name, value } = event.target;
@@ -3539,12 +3834,14 @@ function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, onP
       )}
 
       <section className="subscription-payment-settings">
-        <div className="subscription-payment-copy"><span className="subscription-plan-icon"><Icon name="money" /></span><div><h3>Admin payment details</h3><p>UPI ID ya GPay payment link save karein; reminder ke amount ke saath QR image banegi.</p></div><span className={`subscription-payment-saved${configuredPaymentLink ? " ready" : ""}`}><i />{configuredPaymentLink ? "Saved automatically" : "Not set"}</span></div>
+        <div className="subscription-payment-copy"><span className="subscription-plan-icon"><Icon name="money" /></span><div><h3>Admin payment details</h3><p>UPI ID save karein; QR code sirf invoice PDF ke payment section me add hoga.</p></div><span className={`subscription-payment-saved${paymentSaveState === "saved" && configuredPaymentLink ? " ready" : ""}`}><i />{paymentSaveState === "saving" ? "Saving..." : paymentSaveState === "error" ? "Save failed" : configuredPaymentLink ? "Saved" : "Not set"}</span></div>
         <div className="subscription-payment-grid">
-          <label><span>GPay / UPI ID or payment link</span><input value={paymentDetails.paymentLink} onChange={(event) => onPaymentDetailsChange((current) => ({ ...current, paymentLink: event.target.value }))} onBlur={() => onPaymentDetailsChange((current) => ({ ...current, paymentLink: current.paymentLink.trim() }))} placeholder="bhavesh@oksbi or upi://pay?pa=bhavesh@oksbi" /></label>
+          <label><span>GPay / UPI ID or payment link</span>{paymentEditing ? <input value={paymentDetails.paymentLink} onChange={(event) => onPaymentDetailsChange((current) => ({ ...current, paymentLink: event.target.value }))} placeholder="bhavesh@oksbi or upi://pay?pa=bhavesh@oksbi" autoFocus /> : <div className="subscription-payment-value">{paymentDetails.paymentLink}</div>}</label>
         </div>
-        {configuredPaymentLink && <div className="subscription-payment-preview"><img src={subscriptionQrUrl(configuredPaymentLink, paymentDetails.qrCodeUrl)} alt="Admin payment QR code preview" /><div><strong>QR preview ready</strong><span>Subscriber ke payable amount ke hisaab se naya QR WhatsApp share ke waqt banega.</span></div></div>}
+        <div className="subscription-payment-actions">{paymentEditing ? <button className="subscription-save-payment-button" type="button" onClick={savePayment} disabled={!paymentDetails.paymentLink.trim() || paymentSaveState === "saving"}><Icon name="check" />{paymentSaveState === "saving" ? "Saving..." : configuredPaymentLink ? "Update UPI details" : "Save UPI details"}</button> : <button className="subscription-edit-payment-button" type="button" onClick={() => setPaymentEditing(true)}><Icon name="edit" />Edit UPI details</button>}<span>{paymentEditing ? "Save karne ke baad UPI details yahan locked rahengi." : "Saved details invoice PDF ke QR me use hongi."}</span></div>
       </section>
+
+      {invoiceDownloadError && <div className="subscription-invoice-error"><Icon name="info" /><span>{invoiceDownloadError}</span></div>}
 
       {loading ? (
         <div className="subscription-customers-empty"><Icon name="people" /><strong>Checking subscriptions...</strong><span>Customer vehicles ka latest count load ho raha hai.</span></div>
@@ -3563,7 +3860,7 @@ function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, onP
               <div className="subscription-subscriber-stat"><small>Vehicles</small><strong>{row.vehicleCount}</strong><span>active count</span></div>
               <div className="subscription-subscriber-stat"><small>Current price</small><strong>₹{row.currentPrice.toLocaleString("en-IN")}</strong><span>auto calculated</span></div>
               <div className="subscription-subscriber-stat"><small>Expiry</small><strong>{formatSubscriptionDate(row.endDate)}</strong><span className={`subscription-expiry-status ${row.status === "Expired" ? "expired" : row.status === "Expiring soon" ? "soon" : "active"}`}><i />{row.days === null ? "No date" : row.days < 0 ? `${Math.abs(row.days)} days overdue` : row.days === 0 ? "Expires today" : `${row.days} days left`}</span></div>
-              <div className="subscription-subscriber-actions"><button className="subscription-reminder-button" type="button" disabled={!row.customer?.phone} onClick={() => onSendReminder(row)}><Icon name="phone" />Send Invoice PDF</button><button className="subscription-subscriber-delete" type="button" onClick={() => { if (window.confirm(`Remove ${row.customer?.name || "this subscriber"}?`)) onDelete(row.id); }} aria-label={`Remove ${row.customer?.name || "subscriber"}`}><Icon name="trash" /></button></div>
+              <div className="subscription-subscriber-actions"><button className="subscription-download-button" type="button" disabled={invoiceDownloadId === row.id} onClick={() => onDownloadInvoice(row)}><Icon name="download" />{invoiceDownloadId === row.id ? "Preparing PDF..." : "Download PDF"}</button><button className="subscription-reminder-button" type="button" disabled={!row.customer?.phone} onClick={() => onSendReminder(row)}><Icon name="phone" />Send Invoice PDF</button><button className="subscription-subscriber-delete" type="button" onClick={() => { if (window.confirm(`Remove ${row.customer?.name || "this subscriber"}?`)) onDelete(row.id); }} aria-label={`Remove ${row.customer?.name || "subscriber"}`}><Icon name="trash" /></button></div>
             </article>
           ))}
         </div>
@@ -5562,7 +5859,7 @@ function WhatsAppTemplatesSettings({ templates, saveTemplates }) {
   };
 
   const addDraft = () => {
-    setDrafts((current) => [...current, { id: `custom-${Date.now()}`, name: "New template", body: "Hello {{customer}}, please contact Kuber Finance regarding {{vehicle}}.", active: true }]);
+    setDrafts((current) => [...current, { id: `custom-${Date.now()}`, name: "New template", body: "Hello {{customer}}, please contact Aakash Finance regarding {{vehicle}}.", active: true }]);
   };
 
   return (
@@ -6892,6 +7189,7 @@ const iconPaths = {
   store: <><path d="M4 10v11h16V10" /><path d="M3 10h18L19 3H5z" /><path d="M9 21v-6h6v6" /></>,
   chart: <><path d="M3 3v18h18" /><path d="M7 16V9M12 16V5M17 16v-3" /></>,
   download: <><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></>,
+  edit: <><path d="m4 16.5-.8 3.3 3.3-.8L18.7 6.8a2.2 2.2 0 0 0-3.1-3.1L4 16.5Z" /><path d="m14.5 5.5 3 3" /></>,
   upload: <><path d="M12 16V3" /><path d="m7 8 5-5 5 5" /><path d="M4 14v6h16v-6" /></>,
   settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.6 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.6a1.7 1.7 0 0 0-.34-1.88l-.06-.06A2 2 0 1 1 7.03 3.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.4 4.6a1.7 1.7 0 0 0 1.88-.34l-.06-.06A2 2 0 1 1 20.11 7l-.06.06A1.7 1.7 0 0 0 19.4 9c.4.25.75.6 1 1 .28.45.68.7 1.1.7H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51.9z" /></>,
   cloud: <path d="M17.5 19H7a5 5 0 1 1 1.1-9.88A7 7 0 0 1 21 12.5 3.5 3.5 0 0 1 17.5 19z" />,

@@ -71,7 +71,7 @@ const initialWhatsAppTemplates = [
   {
     id: "payment-reminder",
     name: "Payment reminder",
-    body: "Hello {{customer}}, Kuber Finance reminder: {{vehicle}} has {{type}} due on {{dueDate}}. Amount {{amount}}. Please upload payment/renewal proof.",
+    body: "Hello {{customer}}, Aakash Finance reminder: {{vehicle}} has {{type}} due on {{dueDate}}. Amount {{amount}}. Please upload payment/renewal proof.",
     active: true
   },
   {

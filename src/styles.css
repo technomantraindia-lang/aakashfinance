@@ -14807,6 +14807,18 @@ textarea {
 .subscription-payment-grid input { background: #102744; border: 1px solid #31577F; border-radius: 8px; color: #F5F8FD; font: inherit; min-height: 40px; outline: 0; padding: 0 11px; width: 100%; }
 .subscription-payment-grid input:focus { border-color: #F0A500; box-shadow: 0 0 0 2px rgb(240 165 0 / 12%); }
 .subscription-payment-grid input::placeholder { color: #7898BC; }
+.subscription-payment-value { align-items: center; background: #102744; border: 1px solid #31577F; border-radius: 8px; color: #F5F8FD; display: flex; font: inherit; min-height: 40px; overflow-wrap: anywhere; padding: 0 11px; }
+.subscription-payment-actions { align-items: center; display: flex; gap: 10px; justify-content: space-between; margin-top: 12px; }
+.subscription-payment-actions > span { color: #7898BC; font-size: 10px; }
+.subscription-invoice-error { align-items: center; background: rgb(255 138 128 / 9%); border: 1px solid rgb(255 138 128 / 45%); border-radius: 9px; color: #FFB7B0; display: flex; font-size: 11px; gap: 8px; margin: 12px 0; padding: 10px 12px; }
+.subscription-invoice-error .icon { flex: 0 0 16px; height: 16px; width: 16px; }
+.subscription-save-payment-button { align-items: center; background: #F0A500; border: 1px solid #F6BE35; border-radius: 8px; color: #132F55; cursor: pointer; display: inline-flex; font-size: 11px; font-weight: 900; gap: 6px; min-height: 34px; padding: 0 12px; }
+.subscription-save-payment-button:hover { background: #FFD166; border-color: #FFE39A; }
+.subscription-save-payment-button:disabled { cursor: not-allowed; opacity: .5; }
+.subscription-save-payment-button .icon { height: 14px; width: 14px; }
+.subscription-edit-payment-button { align-items: center; background: transparent; border: 1px solid #416E9E; border-radius: 8px; color: #CFE3F8; cursor: pointer; display: inline-flex; font-size: 11px; font-weight: 900; gap: 6px; min-height: 34px; padding: 0 12px; }
+.subscription-edit-payment-button:hover { border-color: #F0A500; color: #FFD166; }
+.subscription-edit-payment-button .icon { height: 14px; width: 14px; }
 .subscription-payment-preview { align-items: center; background: #102744; border: 1px dashed #3A6796; border-radius: 10px; display: flex; gap: 12px; padding: 10px; }
 .subscription-payment-preview img { background: #FFF; border-radius: 6px; height: 64px; object-fit: contain; padding: 4px; width: 64px; }
 .subscription-payment-preview div { display: grid; gap: 4px; }
@@ -14843,6 +14855,10 @@ textarea {
 .subscription-expiry-status.expired { color: #FF8A80 !important; }
 .subscription-expiry-status.expired i { background: #FF8A80; }
 .subscription-subscriber-actions { align-items: center; display: flex; gap: 7px; }
+.subscription-download-button { align-items: center; background: #0D2340; border: 1px solid #D7A62A; border-radius: 8px; color: #FFD66B; cursor: pointer; display: inline-flex; font-size: 10px; font-weight: 900; gap: 6px; min-height: 32px; padding: 0 9px; white-space: nowrap; }
+.subscription-download-button:hover { background: #17365E; border-color: #FFE39A; color: #FFF1C2; }
+.subscription-download-button:disabled { cursor: wait; opacity: .65; }
+.subscription-download-button .icon { height: 14px; width: 14px; }
 .subscription-reminder-button { align-items: center; background: #17365E; border: 1px solid #416E9E; border-radius: 8px; color: #F5F8FD; cursor: pointer; display: inline-flex; font-size: 10px; font-weight: 900; gap: 6px; min-height: 32px; padding: 0 9px; white-space: nowrap; }
 .subscription-reminder-button:hover { border-color: #4CC9A0; color: #70D7B2; }
 .subscription-reminder-button:disabled { cursor: not-allowed; opacity: .45; }
@@ -17361,6 +17377,7 @@ textarea {
     justify-content: stretch;
   }
 
+  .subscription-download-button,
   .subscription-reminder-button {
     flex: 1;
   }
@@ -17373,6 +17390,11 @@ textarea {
   .subscription-payment-saved {
     margin-left: 47px;
     width: calc(100% - 47px);
+  }
+
+  .subscription-payment-actions {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .subscription-tier-editor > label {
