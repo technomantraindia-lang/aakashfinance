@@ -3,6 +3,7 @@ import { MarketplaceChat, ChatRequestButton, useMarketplaceChat } from "./Market
 import loginBackground from "./assets/background.png";
 import myFleetLogo from "./assets/My_Fleet_512x512.png";
 import * as pdfjsLib from "pdfjs-dist";
+import { jsPDF } from "jspdf";
 import { createWorker } from "tesseract.js";
 import * as XLSX from "xlsx";
 import {
@@ -198,6 +199,180 @@ function formatSubscriptionDate(value) {
   if (!value) return "—";
   const date = new Date(`${value}T00:00:00`);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function subscriptionInvoiceFileName(customerName = "customer") {
+  const safeName = String(customerName || "customer")
+    .trim()
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase() || "customer";
+  return `kuber-finance-invoice-${safeName}.pdf`;
+}
+
+async function imageUrlToDataUrl(url) {
+  if (!url) return "";
+  try {
+    const response = await fetch(url, { mode: "cors" });
+    if (!response.ok) return "";
+    const blob = await response.blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return "";
+  }
+}
+
+async function createSubscriptionInvoicePdf(row, paymentDetails = {}) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const pageWidth = 210;
+  const left = 18;
+  const right = pageWidth - 18;
+  const navy = [18, 49, 90];
+  const gold = [240, 165, 0];
+  const slate = [91, 111, 139];
+  const light = [244, 247, 251];
+  const green = [47, 153, 122];
+  const customerName = row.customer?.name || "Customer";
+  const amount = Number(row.currentPrice || 0);
+  const invoiceDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  const invoiceNumber = `INV-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+  const paymentLink = normalizeSubscriptionPaymentLink(paymentDetails.paymentLink);
+  const qrUrl = subscriptionQrUrl(paymentLink, paymentDetails.qrCodeUrl, amount);
+  const qrDataUrl = await imageUrlToDataUrl(qrUrl);
+
+  doc.setFillColor(...navy);
+  doc.rect(0, 0, pageWidth, 48, "F");
+  doc.setFillColor(...gold);
+  doc.roundedRect(left, 13, 13, 13, 2, 2, "F");
+  doc.setDrawColor(...navy);
+  doc.setLineWidth(1.1);
+  doc.line(left + 3, 23, left + 6.5, 16.5);
+  doc.line(left + 6.5, 16.5, left + 10, 23);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.text("KUBER FINANCE", left + 18, 20);
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(193, 211, 232);
+  doc.text("Fleet subscription management", left + 18, 27);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.setTextColor(255, 255, 255);
+  doc.text("SUBSCRIPTION INVOICE", right, 18, { align: "right" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(193, 211, 232);
+  doc.text(invoiceNumber, right, 27, { align: "right" });
+  doc.text(invoiceDate, right, 33, { align: "right" });
+
+  doc.setFillColor(...light);
+  doc.roundedRect(left, 59, pageWidth - 36, 35, 3, 3, "F");
+  doc.setTextColor(...slate);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.text("BILL TO", left + 8, 68);
+  doc.setTextColor(...navy);
+  doc.setFontSize(14);
+  doc.text(String(customerName), left + 8, 77);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...slate);
+  doc.text(String(row.customer?.phone || "Phone not added"), left + 8, 85);
+  doc.text(String(row.customer?.email || "Fleet customer"), right - 8, 77, { align: "right" });
+  doc.text("Subscription renewal invoice", right - 8, 85, { align: "right" });
+
+  doc.setTextColor(...navy);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text("SUBSCRIPTION SUMMARY", left, 108);
+  const tableTop = 114;
+  const tableHeight = 54;
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(216, 225, 236);
+  doc.roundedRect(left, tableTop, pageWidth - 36, tableHeight, 2, 2, "FD");
+  doc.setFillColor(...navy);
+  doc.rect(left, tableTop, pageWidth - 36, 11, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(8);
+  doc.text("ITEM", left + 8, tableTop + 7);
+  doc.text("DETAIL", right - 8, tableTop + 7, { align: "right" });
+  const summaryRows = [
+    ["Plan", row.plan?.name || "Subscription plan"],
+    ["Active vehicles", String(row.vehicleCount ?? 0)],
+    ["Billing cycle", row.plan?.billingCycle || "Monthly"],
+    ["Expiry date", formatSubscriptionDate(row.endDate)]
+  ];
+  summaryRows.forEach(([label, value], index) => {
+    const y = tableTop + 21 + index * 10;
+    doc.setDrawColor(232, 237, 244);
+    if (index > 0) doc.line(left + 7, y - 5, right - 7, y - 5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...slate);
+    doc.text(label, left + 8, y);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...navy);
+    doc.text(value, right - 8, y, { align: "right" });
+  });
+
+  doc.setFillColor(255, 247, 226);
+  doc.setDrawColor(249, 207, 116);
+  doc.roundedRect(left, 178, pageWidth - 36, 25, 3, 3, "FD");
+  doc.setTextColor(...slate);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text("TOTAL PAYABLE", left + 10, 193);
+  doc.setTextColor(...navy);
+  doc.setFontSize(18);
+  doc.text(`Rs. ${amount.toLocaleString("en-IN")}`, right - 10, 193, { align: "right" });
+
+  doc.setTextColor(...navy);
+  doc.setFontSize(11);
+  doc.text("PAYMENT DETAILS", left, 219);
+  doc.setFillColor(...light);
+  doc.roundedRect(left, 225, pageWidth - 36, 55, 3, 3, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...navy);
+  doc.text("UPI / GPay", left + 9, 237);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...slate);
+  doc.text("Scan to pay the exact subscription amount", left + 9, 245);
+  const paymentValue = String(paymentDetails.paymentLink || paymentDetails.qrCodeUrl || "Payment details not configured");
+  doc.text(doc.splitTextToSize(paymentValue, 83), left + 9, 254);
+  doc.setTextColor(...green);
+  doc.setFont("helvetica", "bold");
+  doc.text("Payment receipt can be shared on WhatsApp", left + 9, 272);
+  if (qrDataUrl) {
+    doc.addImage(qrDataUrl, "PNG", right - 51, 231, 39, 39);
+    doc.setTextColor(...navy);
+    doc.setFontSize(8);
+    doc.text("SCAN TO PAY", right - 31.5, 275, { align: "center" });
+  } else {
+    doc.setDrawColor(170, 184, 202);
+    doc.rect(right - 51, 231, 39, 39);
+    doc.setTextColor(...slate);
+    doc.setFontSize(8);
+    doc.text("QR unavailable", right - 31.5, 251, { align: "center" });
+  }
+
+  doc.setDrawColor(216, 225, 236);
+  doc.line(left, 291, right, 291);
+  doc.setTextColor(...slate);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text("Thank you for choosing Kuber Finance", left, 299);
+  doc.text("This is a computer-generated invoice.", right, 299, { align: "right" });
+
+  const blob = doc.output("blob");
+  const fileName = subscriptionInvoiceFileName(customerName);
+  return { blob, fileName, file: new File([blob], fileName, { type: "application/pdf" }) };
 }
 
 function clearSession() {
@@ -3068,20 +3243,23 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
     const finalMessage = hasPaymentDetails
       ? message
       : message.split("\n").slice(0, 7).concat(["Payment link and QR code are not configured yet. Please contact the administrator."]).join("\n");
-    if (hasPaymentDetails) {
-      try {
-        const qrResponse = await fetch(qrUrl, { mode: "cors" });
-        if (qrResponse.ok && typeof File !== "undefined" && navigator.share && navigator.canShare) {
-          const qrBlob = await qrResponse.blob();
-          const qrFile = new File([qrBlob], `subscription-${row.customer?.name || "customer"}.png`, { type: qrBlob.type || "image/png" });
-          if (navigator.canShare({ files: [qrFile] })) {
-            await navigator.share({ title: "Subscription payment update", text: finalMessage, files: [qrFile] });
-            return;
-          }
-        }
-      } catch (error) {
-        if (error?.name === "AbortError") return;
+    let invoice;
+    try {
+      invoice = await createSubscriptionInvoicePdf(row, paymentDetails);
+      if (typeof navigator !== "undefined" && navigator.share && navigator.canShare && navigator.canShare({ files: [invoice.file] })) {
+        await navigator.share({ title: "Kuber Finance subscription invoice", text: finalMessage, files: [invoice.file] });
+        return;
       }
+      const downloadUrl = URL.createObjectURL(invoice.blob);
+      const downloadLink = document.createElement("a");
+      downloadLink.href = downloadUrl;
+      downloadLink.download = invoice.fileName;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      downloadLink.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    } catch (error) {
+      console.error("Subscription invoice PDF failed", error);
     }
     window.open(`https://wa.me/${normalizedPhone}?text=${encodeURIComponent(finalMessage)}`, "_blank", "noopener,noreferrer");
   };
@@ -3366,7 +3544,7 @@ function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, onP
               <div className="subscription-subscriber-stat"><small>Vehicles</small><strong>{row.vehicleCount}</strong><span>active count</span></div>
               <div className="subscription-subscriber-stat"><small>Current price</small><strong>₹{row.currentPrice.toLocaleString("en-IN")}</strong><span>auto calculated</span></div>
               <div className="subscription-subscriber-stat"><small>Expiry</small><strong>{formatSubscriptionDate(row.endDate)}</strong><span className={`subscription-expiry-status ${row.status === "Expired" ? "expired" : row.status === "Expiring soon" ? "soon" : "active"}`}><i />{row.days === null ? "No date" : row.days < 0 ? `${Math.abs(row.days)} days overdue` : row.days === 0 ? "Expires today" : `${row.days} days left`}</span></div>
-              <div className="subscription-subscriber-actions"><button className="subscription-reminder-button" type="button" disabled={!row.customer?.phone} onClick={() => onSendReminder(row)}><Icon name="phone" />{configuredPaymentLink ? "Send QR + WhatsApp" : "Send WhatsApp test"}</button><button className="subscription-subscriber-delete" type="button" onClick={() => { if (window.confirm(`Remove ${row.customer?.name || "this subscriber"}?`)) onDelete(row.id); }} aria-label={`Remove ${row.customer?.name || "subscriber"}`}><Icon name="trash" /></button></div>
+              <div className="subscription-subscriber-actions"><button className="subscription-reminder-button" type="button" disabled={!row.customer?.phone} onClick={() => onSendReminder(row)}><Icon name="phone" />Send Invoice PDF</button><button className="subscription-subscriber-delete" type="button" onClick={() => { if (window.confirm(`Remove ${row.customer?.name || "this subscriber"}?`)) onDelete(row.id); }} aria-label={`Remove ${row.customer?.name || "subscriber"}`}><Icon name="trash" /></button></div>
             </article>
           ))}
         </div>
