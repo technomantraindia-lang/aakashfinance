@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { MarketplaceChat, ChatRequestButton, useMarketplaceChat } from "./MarketplaceChat";
 import loginBackground from "./assets/background.png";
 import myFleetLogo from "./assets/My_Fleet_512x512.png";
+import kuberLogo from "./assets/logo.png";
 import * as pdfjsLib from "pdfjs-dist";
 import { jsPDF } from "jspdf";
 import { createWorker } from "tesseract.js";
@@ -243,24 +244,29 @@ async function createSubscriptionInvoicePdf(row, paymentDetails = {}) {
   const invoiceNumber = `INV-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
   const paymentLink = normalizeSubscriptionPaymentLink(paymentDetails.paymentLink);
   const qrUrl = subscriptionQrUrl(paymentLink, paymentDetails.qrCodeUrl, amount);
+  const logoDataUrl = await imageUrlToDataUrl(kuberLogo);
   const qrDataUrl = await imageUrlToDataUrl(qrUrl);
 
   doc.setFillColor(...navy);
   doc.rect(0, 0, pageWidth, 48, "F");
-  doc.setFillColor(...gold);
-  doc.roundedRect(left, 13, 13, 13, 2, 2, "F");
-  doc.setDrawColor(...navy);
-  doc.setLineWidth(1.1);
-  doc.line(left + 3, 23, left + 6.5, 16.5);
-  doc.line(left + 6.5, 16.5, left + 10, 23);
+  if (logoDataUrl) {
+    doc.addImage(logoDataUrl, "PNG", left, 9, 21, 21, undefined, "FAST");
+  } else {
+    doc.setFillColor(...gold);
+    doc.roundedRect(left, 13, 13, 13, 2, 2, "F");
+    doc.setDrawColor(...navy);
+    doc.setLineWidth(1.1);
+    doc.line(left + 3, 23, left + 6.5, 16.5);
+    doc.line(left + 6.5, 16.5, left + 10, 23);
+  }
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.text("KUBER FINANCE", left + 18, 20);
-  doc.setFontSize(8);
+  doc.setFontSize(15);
+  doc.text("KUBER FINANCE", left + 25, 19);
+  doc.setFontSize(7.5);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(193, 211, 232);
-  doc.text("Fleet subscription management", left + 18, 27);
+  doc.text("Fleet subscription management", left + 25, 26);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
   doc.setTextColor(255, 255, 255);
@@ -272,7 +278,7 @@ async function createSubscriptionInvoicePdf(row, paymentDetails = {}) {
   doc.text(invoiceDate, right, 33, { align: "right" });
 
   doc.setFillColor(...light);
-  doc.roundedRect(left, 59, pageWidth - 36, 35, 3, 3, "F");
+  doc.roundedRect(left, 59, pageWidth - 36, 36, 3, 3, "F");
   doc.setTextColor(...slate);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8);
@@ -285,7 +291,7 @@ async function createSubscriptionInvoicePdf(row, paymentDetails = {}) {
   doc.setTextColor(...slate);
   doc.text(String(row.customer?.phone || "Phone not added"), left + 8, 85);
   doc.text(String(row.customer?.email || "Fleet customer"), right - 8, 77, { align: "right" });
-  doc.text("Subscription renewal invoice", right - 8, 85, { align: "right" });
+  doc.text("Subscription renewal invoice", right - 8, 86, { align: "right" });
 
   doc.setTextColor(...navy);
   doc.setFont("helvetica", "bold");
@@ -348,7 +354,7 @@ async function createSubscriptionInvoicePdf(row, paymentDetails = {}) {
   doc.text(doc.splitTextToSize(paymentValue, 83), left + 9, 254);
   doc.setTextColor(...green);
   doc.setFont("helvetica", "bold");
-  doc.text("Payment receipt can be shared on WhatsApp", left + 9, 272);
+  doc.text("This is a computer-generated invoice.", left + 9, 272);
   if (qrDataUrl) {
     doc.addImage(qrDataUrl, "PNG", right - 51, 231, 39, 39);
     doc.setTextColor(...navy);
@@ -368,7 +374,7 @@ async function createSubscriptionInvoicePdf(row, paymentDetails = {}) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.text("Thank you for choosing Kuber Finance", left, 299);
-  doc.text("This is a computer-generated invoice.", right, 299, { align: "right" });
+  doc.text("No signature required", right, 299, { align: "right" });
 
   const blob = doc.output("blob");
   const fileName = subscriptionInvoiceFileName(customerName);
