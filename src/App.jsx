@@ -3573,43 +3573,24 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
     return persistPaymentDetails(paymentDetails);
   };
 
-  const sendSubscriptionReminder = async (row) => {
+  const sendSubscriptionPaymentLink = (row) => {
     const phone = String(row.customer?.phone || "").replace(/\D/g, "");
     const normalizedPhone = phone.length === 10 ? `91${phone}` : phone;
     const configuredPaymentLink = normalizeSubscriptionPaymentLink(paymentDetails.paymentLink);
     const amountPaymentLink = subscriptionPaymentLinkWithAmount(configuredPaymentLink, row.currentPrice);
-    const qrUrl = subscriptionQrUrl(configuredPaymentLink, paymentDetails.qrCodeUrl, row.currentPrice);
-    const hasPaymentDetails = Boolean(configuredPaymentLink && qrUrl);
-    if (!normalizedPhone) return;
+    if (!normalizedPhone || !amountPaymentLink) return;
     const message = [
       `Hello ${row.customer?.name || "Customer"},`,
       row.status === "Expired" ? "Your subscription has expired." : "Your subscription is about to expire.",
       `Plan: ${row.plan?.name || "Subscription plan"}`,
-      `Plan details: ${row.plan?.description || "Fleet subscription renewal"}`,
-      `Current active vehicles: ${row.vehicleCount}`,
+      `Active vehicles: ${row.vehicleCount}`,
       `Payable amount: ₹${row.currentPrice.toLocaleString("en-IN")}`,
       `Expiry date: ${formatSubscriptionDate(row.endDate)}`,
-      "Please use the payment link below to renew or update your subscription:",
+      "Please tap the payment link below to pay securely. The exact amount is already filled in Google Pay/your UPI app:",
       amountPaymentLink,
-      "An amount-specific QR code is attached with this message:",
-      qrUrl,
-      "Please share the payment receipt after completing the payment."
+      "After payment, please share the payment screenshot or receipt here. Thank you!"
     ].join("\n");
-    const finalMessage = hasPaymentDetails
-      ? message
-      : message.split("\n").slice(0, 7).concat(["Payment link and QR code are not configured yet. Please contact the administrator."]).join("\n");
-    let invoice;
-    try {
-      invoice = await createSubscriptionInvoicePdf(row, paymentDetails);
-      if (typeof navigator !== "undefined" && navigator.share && navigator.canShare && navigator.canShare({ files: [invoice.file] })) {
-        await navigator.share({ title: "Aakash Finance subscription invoice", text: finalMessage, files: [invoice.file] });
-        return;
-      }
-      downloadSubscriptionInvoiceFile(invoice);
-    } catch (error) {
-      console.error("Subscription invoice PDF failed", error);
-    }
-    window.open(`https://wa.me/${normalizedPhone}?text=${encodeURIComponent(finalMessage)}`, "_blank", "noopener,noreferrer");
+    window.open(`https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
   };
 
   const downloadSubscriptionInvoice = async (row) => {
@@ -3688,7 +3669,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
         {activeView === "dashboard" ? <SubscriptionPanel plans={plans} subscribers={subscribers} data={customerData} subscriptionError={subscriptionError} /> : activeView === "plans" ? (
           <SubscriptionPlans plans={plans} onCreate={createPlan} onDelete={deletePlan} />
         ) : activeView === "subscribers" ? (
-          <SubscriptionSubscribers data={customerData} plans={plans} subscribers={subscribers} paymentDetails={paymentDetails} paymentSaveState={paymentSaveState} invoiceDownloadId={invoiceDownloadId} invoiceDownloadError={invoiceDownloadError} onPaymentDetailsChange={updatePaymentDetails} onSavePaymentDetails={savePaymentDetailsNow} onCreate={createSubscriber} onDelete={deleteSubscriber} onSendReminder={sendSubscriptionReminder} onDownloadInvoice={downloadSubscriptionInvoice} loading={customerLoading} error={customerError || subscriptionError} onOpenPlans={() => setActiveView("plans")} />
+          <SubscriptionSubscribers data={customerData} plans={plans} subscribers={subscribers} paymentDetails={paymentDetails} paymentSaveState={paymentSaveState} invoiceDownloadId={invoiceDownloadId} invoiceDownloadError={invoiceDownloadError} onPaymentDetailsChange={updatePaymentDetails} onSavePaymentDetails={savePaymentDetailsNow} onCreate={createSubscriber} onDelete={deleteSubscriber} onSendPaymentLink={sendSubscriptionPaymentLink} onDownloadInvoice={downloadSubscriptionInvoice} loading={customerLoading} error={customerError || subscriptionError} onOpenPlans={() => setActiveView("plans")} />
         ) : activeView === "customers" ? (
           <SubscriptionCustomers
             data={customerData}
@@ -3802,7 +3783,7 @@ function SubscriptionPlans({ plans, onCreate, onDelete }) {
   );
 }
 
-function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, paymentSaveState, invoiceDownloadId, invoiceDownloadError, onPaymentDetailsChange, onSavePaymentDetails, onCreate, onDelete, onSendReminder, onDownloadInvoice, loading, error, onOpenPlans }) {
+function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, paymentSaveState, invoiceDownloadId, invoiceDownloadError, onPaymentDetailsChange, onSavePaymentDetails, onCreate, onDelete, onSendPaymentLink, onDownloadInvoice, loading, error, onOpenPlans }) {
   const [formOpen, setFormOpen] = useState(false);
   const [testDateMode, setTestDateMode] = useState(false);
   const [paymentEditing, setPaymentEditing] = useState(() => !String(paymentDetails.paymentLink || "").trim());
@@ -3892,11 +3873,11 @@ function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, pay
       )}
 
       <section className="subscription-payment-settings">
-        <div className="subscription-payment-copy"><span className="subscription-plan-icon"><Icon name="money" /></span><div><h3>Admin payment details</h3><p>UPI ID save karein; QR code sirf invoice PDF ke payment section me add hoga.</p></div><span className={`subscription-payment-saved${paymentSaveState === "saved" && configuredPaymentLink ? " ready" : ""}`}><i />{paymentSaveState === "saving" ? "Saving..." : paymentSaveState === "error" ? "Save failed" : configuredPaymentLink ? "Saved" : "Not set"}</span></div>
+        <div className="subscription-payment-copy"><span className="subscription-plan-icon"><Icon name="money" /></span><div><h3>Admin payment details</h3><p>UPI ID save karein. Har customer ke current amount ke saath payment link WhatsApp par bheja jayega.</p></div><span className={`subscription-payment-saved${paymentSaveState === "saved" && configuredPaymentLink ? " ready" : ""}`}><i />{paymentSaveState === "saving" ? "Saving..." : paymentSaveState === "error" ? "Save failed" : configuredPaymentLink ? "Saved" : "Not set"}</span></div>
         <div className="subscription-payment-grid">
           <label><span>GPay / UPI ID or payment link</span>{paymentEditing ? <input value={paymentDetails.paymentLink} onChange={(event) => onPaymentDetailsChange((current) => ({ ...current, paymentLink: event.target.value }))} placeholder="bhavesh@oksbi or upi://pay?pa=bhavesh@oksbi" autoFocus /> : <div className="subscription-payment-value">{paymentDetails.paymentLink}</div>}</label>
         </div>
-        <div className="subscription-payment-actions">{paymentEditing ? <button className="subscription-save-payment-button" type="button" onClick={savePayment} disabled={!paymentDetails.paymentLink.trim() || paymentSaveState === "saving"}><Icon name="check" />{paymentSaveState === "saving" ? "Saving..." : configuredPaymentLink ? "Update UPI details" : "Save UPI details"}</button> : <button className="subscription-edit-payment-button" type="button" onClick={() => setPaymentEditing(true)}><Icon name="edit" />Edit UPI details</button>}<span>{paymentEditing ? "Save karne ke baad UPI details yahan locked rahengi." : "Saved details invoice PDF ke QR me use hongi."}</span></div>
+        <div className="subscription-payment-actions">{paymentEditing ? <button className="subscription-save-payment-button" type="button" onClick={savePayment} disabled={!paymentDetails.paymentLink.trim() || paymentSaveState === "saving"}><Icon name="check" />{paymentSaveState === "saving" ? "Saving..." : configuredPaymentLink ? "Update UPI details" : "Save UPI details"}</button> : <button className="subscription-edit-payment-button" type="button" onClick={() => setPaymentEditing(true)}><Icon name="edit" />Edit UPI details</button>}<span>{paymentEditing ? "Save karne ke baad UPI details yahan locked rahengi." : "Amount-prefilled payment link WhatsApp message me jayega."}</span></div>
       </section>
 
       {invoiceDownloadError && <div className="subscription-invoice-error"><Icon name="info" /><span>{invoiceDownloadError}</span></div>}
@@ -3918,7 +3899,7 @@ function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, pay
               <div className="subscription-subscriber-stat"><small>Vehicles</small><strong>{row.vehicleCount}</strong><span>active count</span></div>
               <div className="subscription-subscriber-stat"><small>Current price</small><strong>₹{row.currentPrice.toLocaleString("en-IN")}</strong><span>auto calculated</span></div>
               <div className="subscription-subscriber-stat"><small>Expiry</small><strong>{formatSubscriptionDate(row.endDate)}</strong><span className={`subscription-expiry-status ${row.status === "Expired" ? "expired" : row.status === "Expiring soon" ? "soon" : "active"}`}><i />{row.days === null ? "No date" : row.days < 0 ? `${Math.abs(row.days)} days overdue` : row.days === 0 ? "Expires today" : `${row.days} days left`}</span></div>
-              <div className="subscription-subscriber-actions"><button className="subscription-download-button" type="button" disabled={invoiceDownloadId === row.id} onClick={() => onDownloadInvoice(row)}><Icon name="download" />{invoiceDownloadId === row.id ? "Preparing PDF..." : "Download PDF"}</button><button className="subscription-reminder-button" type="button" disabled={!row.customer?.phone} onClick={() => onSendReminder(row)}><Icon name="phone" />Send Invoice PDF</button><button className="subscription-subscriber-delete" type="button" onClick={() => { if (window.confirm(`Remove ${row.customer?.name || "this subscriber"}?`)) onDelete(row.id); }} aria-label={`Remove ${row.customer?.name || "subscriber"}`}><Icon name="trash" /></button></div>
+              <div className="subscription-subscriber-actions"><button className="subscription-download-button" type="button" disabled={invoiceDownloadId === row.id} onClick={() => onDownloadInvoice(row)}><Icon name="download" />{invoiceDownloadId === row.id ? "Preparing PDF..." : "Download PDF"}</button><button className="subscription-reminder-button" type="button" disabled={!row.customer?.phone || !configuredPaymentLink} onClick={() => onSendPaymentLink(row)} title={!configuredPaymentLink ? "Pehle admin payment details me UPI ID save karein" : "Amount-prefilled payment link WhatsApp par bhejein"}><Icon name="send" />Send Payment Link</button><button className="subscription-subscriber-delete" type="button" onClick={() => { if (window.confirm(`Remove ${row.customer?.name || "this subscriber"}?`)) onDelete(row.id); }} aria-label={`Remove ${row.customer?.name || "subscriber"}`}><Icon name="trash" /></button></div>
             </article>
           ))}
         </div>
