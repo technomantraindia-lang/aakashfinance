@@ -3633,8 +3633,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
       `Payable amount: ₹${row.currentPrice.toLocaleString("en-IN")}`,
       `Expiry date: ${formatSubscriptionDate(row.endDate)}`,
       "Please tap the payment link below to pay securely. The exact amount is already filled in Google Pay/your UPI app:",
-      clickablePaymentLink,
-      "After payment, please share the payment screenshot or receipt here. Thank you!"
+      clickablePaymentLink
     ].join("\n");
     window.open(`https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
   };
