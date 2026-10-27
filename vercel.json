@@ -7,6 +7,14 @@
     {
       "source": "/subscription-panel/",
       "destination": "/"
+    },
+    {
+      "source": "/subscription-payment",
+      "destination": "/"
+    },
+    {
+      "source": "/subscription-payment/",
+      "destination": "/"
     }
   ]
 }

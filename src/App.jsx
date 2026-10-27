@@ -123,6 +123,14 @@ function subscriptionPaymentLinkWithAmount(paymentLink, amount) {
   }
 }
 
+function subscriptionPaymentPageLink(paymentLink, amount) {
+  const amountPaymentLink = subscriptionPaymentLinkWithAmount(paymentLink, amount);
+  if (!amountPaymentLink || typeof window === "undefined") return amountPaymentLink;
+  const paymentPage = new URL("/subscription-payment", window.location.origin);
+  paymentPage.searchParams.set("upi", amountPaymentLink);
+  return paymentPage.toString();
+}
+
 function subscriptionQrUrl(paymentLink, qrCodeUrl, amount) {
   const normalizedPaymentLink = normalizeSubscriptionPaymentLink(paymentLink);
   if (!normalizedPaymentLink) return qrCodeUrl || "";
@@ -1650,6 +1658,7 @@ export default function App() {
   const [session, setSession] = useState(loadSession);
   const publicPath = window.location.pathname.replace(/\/+$/, "") || "/";
   if (publicPath === "/privacy-policy") return <PrivacyPolicyPage />;
+  if (publicPath === "/subscription-payment") return <SubscriptionPaymentPage />;
   const handleLogin = (nextSession) => {
     saveSession(nextSession);
     setSession(nextSession);
@@ -1675,6 +1684,43 @@ export default function App() {
     saveSession(next);
     return next;
   })} />;
+}
+
+function SubscriptionPaymentPage() {
+  const params = new URLSearchParams(window.location.search);
+  const upiLink = params.get("upi") || "";
+  let amount = "";
+  try {
+    amount = new URL(upiLink).searchParams.get("am") || "";
+  } catch {
+    amount = "";
+  }
+
+  useEffect(() => {
+    if (!upiLink) return undefined;
+    const timer = window.setTimeout(() => {
+      window.location.href = upiLink;
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [upiLink]);
+
+  return (
+    <main className="subscription-payment-page">
+      <section className="subscription-payment-card">
+        <span className="subscription-payment-brand">KUBER FINANCE</span>
+        <h1>Complete your payment</h1>
+        {amount && <strong className="subscription-payment-amount">₹{Number(amount).toLocaleString("en-IN")}</strong>}
+        {upiLink ? (
+          <>
+            <p>GPay/UPI open ho raha hai. Agar automatically open na ho, neeche button par tap karein.</p>
+            <a className="subscription-payment-open-button" href={upiLink}>Open GPay / UPI</a>
+          </>
+        ) : (
+          <p>Payment link invalid ya incomplete hai. Kripya sender se naya payment link mangwayein.</p>
+        )}
+      </section>
+    </main>
+  );
 }
 
 function PrivacyPolicyPage() {
@@ -3577,8 +3623,8 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
     const phone = String(row.customer?.phone || "").replace(/\D/g, "");
     const normalizedPhone = phone.length === 10 ? `91${phone}` : phone;
     const configuredPaymentLink = normalizeSubscriptionPaymentLink(paymentDetails.paymentLink);
-    const amountPaymentLink = subscriptionPaymentLinkWithAmount(configuredPaymentLink, row.currentPrice);
-    if (!normalizedPhone || !amountPaymentLink) return;
+    const clickablePaymentLink = subscriptionPaymentPageLink(configuredPaymentLink, row.currentPrice);
+    if (!normalizedPhone || !clickablePaymentLink) return;
     const message = [
       `Hello ${row.customer?.name || "Customer"},`,
       row.status === "Expired" ? "Your subscription has expired." : "Your subscription is about to expire.",
@@ -3587,7 +3633,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
       `Payable amount: ₹${row.currentPrice.toLocaleString("en-IN")}`,
       `Expiry date: ${formatSubscriptionDate(row.endDate)}`,
       "Please tap the payment link below to pay securely. The exact amount is already filled in Google Pay/your UPI app:",
-      amountPaymentLink,
+      clickablePaymentLink,
       "After payment, please share the payment screenshot or receipt here. Thank you!"
     ].join("\n");
     window.open(`https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
