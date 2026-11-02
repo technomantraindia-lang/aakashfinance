@@ -1,6 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { loadEnv } from "vite";
+import dns from "node:dns";
+
+dns.setDefaultResultOrder("ipv4first");
 
 function createApiProxy(target) {
   return {
@@ -19,7 +22,7 @@ function createApiProxy(target) {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const apiProxy = createApiProxy(env.VITE_API_PROXY_TARGET || "http://localhost:4000");
+  const apiProxy = createApiProxy(env.VITE_API_PROXY_TARGET || "https://erp.aakashfinance.com");
 
   return {
     plugins: [react()],
