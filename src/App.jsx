@@ -1055,7 +1055,7 @@ function loadData() {
   return emptyAppData();
 }
 
-async function fetchBackendData(token) {
+async function fetchBackendData(token, includeAdminData = true) {
   const fetchJson = async (path, required = true) => {
     try {
       const response = await fetch(`${API_BASE}/api${path}`, { headers: authHeaders(token), cache: "no-store" });
@@ -1088,8 +1088,8 @@ async function fetchBackendData(token) {
     fetchJson("/verification-items", false),
     fetchJson("/sale-closings", false),
     fetchJson("/marketplace-threads", false),
-    fetchJson("/users", false),
-    fetchJson("/settings", false),
+    includeAdminData ? fetchJson("/users", false) : Promise.resolve([]),
+    includeAdminData ? fetchJson("/settings", false) : Promise.resolve({}),
     fetchJson("/reminder-settings/public", false),
     fetchJson("/whatsapp-templates", false),
     fetchJson("/whatsapp-logs", false),
@@ -3525,6 +3525,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
   const [paymentSaveState, setPaymentSaveState] = useState("saved");
   const [invoiceDownloadId, setInvoiceDownloadId] = useState("");
   const [invoiceDownloadError, setInvoiceDownloadError] = useState("");
+  const [paymentLinkSendingId, setPaymentLinkSendingId] = useState("");
   const paymentSaveTimer = useRef(null);
   const paymentEditedRef = useRef(false);
   const sidebarItems = [
@@ -3588,6 +3589,43 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
     return () => { active = false; };
   }, [session.token]);
 
+  // Keep the admin panel in sync when a customer completes payment from the
+  // web checkout or when the Razorpay webhook renews the subscription.
+  useEffect(() => {
+    let active = true;
+    let busy = false;
+    const refreshWorkspace = () => {
+      if (busy) return;
+      busy = true;
+      fetchSubscriptionWorkspace(session.token)
+        .then((remote) => {
+          if (!active) return;
+          const remotePlans = Array.isArray(remote.plans) ? remote.plans : [];
+          if (remotePlans.length) setPlans(ensureDefaultTieredSubscriptionPlans(remotePlans));
+          if (Array.isArray(remote.subscribers) && (remote.subscribers.length || remotePlans.length)) {
+            setSubscribers(remote.subscribers);
+          }
+          if (!paymentEditedRef.current && remote.paymentDetails && (remote.paymentDetails.paymentLink || remote.paymentDetails.qrCodeUrl)) {
+            setPaymentDetails(remote.paymentDetails);
+          }
+          setSubscriptionError("");
+        })
+        .catch((error) => {
+          if (active) setSubscriptionError(error.message || "Subscription data refresh nahi ho saka.");
+        })
+        .finally(() => {
+          busy = false;
+        });
+    };
+    const refreshTimer = window.setInterval(refreshWorkspace, 15000);
+    window.addEventListener("focus", refreshWorkspace);
+    return () => {
+      active = false;
+      window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", refreshWorkspace);
+    };
+  }, [session.token]);
+
   const createPlan = (draft) => {
     const plan = { ...draft, id: `subscription-plan-${Date.now()}`, createdAt: new Date().toISOString() };
     setPlans((current) => [plan, ...current]);
@@ -3649,12 +3687,26 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
     return persistPaymentDetails(paymentDetails);
   };
 
-  const sendSubscriptionPaymentLink = (row) => {
+  const sendSubscriptionPaymentLink = async (row) => {
     const phone = String(row.customer?.phone || "").replace(/\D/g, "");
     const normalizedPhone = phone.length === 10 ? `91${phone}` : phone;
-    const configuredPaymentLink = normalizeSubscriptionPaymentLink(paymentDetails.paymentLink);
-    const clickablePaymentLink = subscriptionPaymentPageLink(configuredPaymentLink, row.currentPrice);
-    if (!normalizedPhone || !clickablePaymentLink) return;
+    if (!normalizedPhone || !row.customerId || !row.planId) return;
+    if (paymentLinkSendingId) return;
+    setPaymentLinkSendingId(row.id);
+    let clickablePaymentLink = "";
+    try {
+      const paymentLink = await saveSubscriptionRequest(session.token, "/subscriptions/payment-link", "POST", {
+        customerId: row.customerId,
+        planId: row.planId
+      });
+      clickablePaymentLink = String(paymentLink.shortUrl || "").trim();
+      if (!clickablePaymentLink) throw new Error("Razorpay payment link could not be created.");
+    } catch (error) {
+      setSubscriptionError(error.message || "Razorpay payment link create nahi ho saka.");
+      return;
+    } finally {
+      setPaymentLinkSendingId("");
+    }
     const message = [
       `Hello ${row.customer?.name || "Customer"},`,
       row.status === "Expired" ? "Your subscription has expired." : "Your subscription is about to expire.",
@@ -3662,7 +3714,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
       `Active vehicles: ${row.vehicleCount}`,
       `Payable amount: ₹${row.currentPrice.toLocaleString("en-IN")}`,
       `Expiry date: ${formatSubscriptionDate(row.endDate)}`,
-      "Please tap the payment link below to pay securely. The exact amount is already filled in Google Pay/your UPI app:",
+      "Please tap the secure Razorpay payment link below to renew your subscription:",
       clickablePaymentLink
     ].join("\n");
     window.open(`https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
@@ -3744,7 +3796,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
         {activeView === "dashboard" ? <SubscriptionPanel plans={plans} subscribers={subscribers} data={customerData} subscriptionError={subscriptionError} /> : activeView === "plans" ? (
           <SubscriptionPlans plans={plans} onCreate={createPlan} onDelete={deletePlan} />
         ) : activeView === "subscribers" ? (
-          <SubscriptionSubscribers data={customerData} plans={plans} subscribers={subscribers} paymentDetails={paymentDetails} paymentSaveState={paymentSaveState} invoiceDownloadId={invoiceDownloadId} invoiceDownloadError={invoiceDownloadError} onPaymentDetailsChange={updatePaymentDetails} onSavePaymentDetails={savePaymentDetailsNow} onCreate={createSubscriber} onDelete={deleteSubscriber} onSendPaymentLink={sendSubscriptionPaymentLink} onDownloadInvoice={downloadSubscriptionInvoice} loading={customerLoading} error={customerError || subscriptionError} onOpenPlans={() => setActiveView("plans")} />
+          <SubscriptionSubscribers data={customerData} plans={plans} subscribers={subscribers} invoiceDownloadId={invoiceDownloadId} invoiceDownloadError={invoiceDownloadError} paymentLinkSendingId={paymentLinkSendingId} onCreate={createSubscriber} onDelete={deleteSubscriber} onSendPaymentLink={sendSubscriptionPaymentLink} onDownloadInvoice={downloadSubscriptionInvoice} loading={customerLoading} error={customerError || subscriptionError} onOpenPlans={() => setActiveView("plans")} />
         ) : activeView === "customers" ? (
           <SubscriptionCustomers
             data={customerData}
@@ -3858,27 +3910,15 @@ function SubscriptionPlans({ plans, onCreate, onDelete }) {
   );
 }
 
-function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, paymentSaveState, invoiceDownloadId, invoiceDownloadError, onPaymentDetailsChange, onSavePaymentDetails, onCreate, onDelete, onSendPaymentLink, onDownloadInvoice, loading, error, onOpenPlans }) {
+function SubscriptionSubscribers({ data, plans, subscribers, invoiceDownloadId, invoiceDownloadError, paymentLinkSendingId, onCreate, onDelete, onSendPaymentLink, onDownloadInvoice, loading, error, onOpenPlans }) {
   const [formOpen, setFormOpen] = useState(false);
   const [testDateMode, setTestDateMode] = useState(false);
-  const [paymentEditing, setPaymentEditing] = useState(() => !String(paymentDetails.paymentLink || "").trim());
   const today = new Date().toISOString().slice(0, 10);
   const [draft, setDraft] = useState({ customerId: "", planId: "", startDate: today, endDate: "" });
   const selectedCustomerVehicleCount = subscriptionVehicleCount(data, draft.customerId);
   const selectedPlan = plans.find((plan) => plan.id === draft.planId);
   const selectedPlanPrice = subscriptionPlanPrice(selectedPlan, selectedCustomerVehicleCount);
   const selectedPlanRate = subscriptionPlanRate(selectedPlan, Math.max(1, selectedCustomerVehicleCount));
-  const configuredPaymentLink = normalizeSubscriptionPaymentLink(paymentDetails.paymentLink);
-
-  useEffect(() => {
-    if (paymentSaveState === "saved" && String(paymentDetails.paymentLink || "").trim()) setPaymentEditing(false);
-  }, [paymentDetails.paymentLink, paymentSaveState]);
-
-  const savePayment = async () => {
-    const saved = await onSavePaymentDetails();
-    if (saved) setPaymentEditing(false);
-  };
-
   const updateDraft = (event) => {
     const { name, value } = event.target;
     setDraft((current) => {
@@ -3947,14 +3987,6 @@ function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, pay
         </form>
       )}
 
-      <section className="subscription-payment-settings">
-        <div className="subscription-payment-copy"><span className="subscription-plan-icon"><Icon name="money" /></span><div><h3>Admin payment details</h3><p>UPI ID save karein. Har customer ke current amount ke saath payment link WhatsApp par bheja jayega.</p></div><span className={`subscription-payment-saved${paymentSaveState === "saved" && configuredPaymentLink ? " ready" : ""}`}><i />{paymentSaveState === "saving" ? "Saving..." : paymentSaveState === "error" ? "Save failed" : configuredPaymentLink ? "Saved" : "Not set"}</span></div>
-        <div className="subscription-payment-grid">
-          <label><span>GPay / UPI ID or payment link</span>{paymentEditing ? <input value={paymentDetails.paymentLink} onChange={(event) => onPaymentDetailsChange((current) => ({ ...current, paymentLink: event.target.value }))} placeholder="bhavesh@oksbi or upi://pay?pa=bhavesh@oksbi" autoFocus /> : <div className="subscription-payment-value">{paymentDetails.paymentLink}</div>}</label>
-        </div>
-        <div className="subscription-payment-actions">{paymentEditing ? <button className="subscription-save-payment-button" type="button" onClick={savePayment} disabled={!paymentDetails.paymentLink.trim() || paymentSaveState === "saving"}><Icon name="check" />{paymentSaveState === "saving" ? "Saving..." : configuredPaymentLink ? "Update UPI details" : "Save UPI details"}</button> : <button className="subscription-edit-payment-button" type="button" onClick={() => setPaymentEditing(true)}><Icon name="edit" />Edit UPI details</button>}<span>{paymentEditing ? "Save karne ke baad UPI details yahan locked rahengi." : "Amount-prefilled payment link WhatsApp message me jayega."}</span></div>
-      </section>
-
       {invoiceDownloadError && <div className="subscription-invoice-error"><Icon name="info" /><span>{invoiceDownloadError}</span></div>}
 
       {loading ? (
@@ -3974,7 +4006,7 @@ function SubscriptionSubscribers({ data, plans, subscribers, paymentDetails, pay
               <div className="subscription-subscriber-stat"><small>Vehicles</small><strong>{row.vehicleCount}</strong><span>active count</span></div>
               <div className="subscription-subscriber-stat"><small>Current price</small><strong>₹{row.currentPrice.toLocaleString("en-IN")}</strong><span>auto calculated</span></div>
               <div className="subscription-subscriber-stat"><small>Expiry</small><strong>{formatSubscriptionDate(row.endDate)}</strong><span className={`subscription-expiry-status ${row.status === "Expired" ? "expired" : row.status === "Expiring soon" ? "soon" : "active"}`}><i />{row.days === null ? "No date" : row.days < 0 ? `${Math.abs(row.days)} days overdue` : row.days === 0 ? "Expires today" : `${row.days} days left`}</span></div>
-              <div className="subscription-subscriber-actions"><button className="subscription-download-button" type="button" disabled={invoiceDownloadId === row.id} onClick={() => onDownloadInvoice(row)}><Icon name="download" />{invoiceDownloadId === row.id ? "Preparing PDF..." : "Download PDF"}</button><button className="subscription-reminder-button" type="button" disabled={!row.customer?.phone || !configuredPaymentLink} onClick={() => onSendPaymentLink(row)} title={!configuredPaymentLink ? "Pehle admin payment details me UPI ID save karein" : "Amount-prefilled payment link WhatsApp par bhejein"}><Icon name="send" />Send Payment Link</button><button className="subscription-subscriber-delete" type="button" onClick={() => { if (window.confirm(`Remove ${row.customer?.name || "this subscriber"}?`)) onDelete(row.id); }} aria-label={`Remove ${row.customer?.name || "subscriber"}`}><Icon name="trash" /></button></div>
+              <div className="subscription-subscriber-actions"><button className="subscription-download-button" type="button" disabled={invoiceDownloadId === row.id} onClick={() => onDownloadInvoice(row)}><Icon name="download" />{invoiceDownloadId === row.id ? "Preparing PDF..." : "Download PDF"}</button><button className="subscription-reminder-button" type="button" disabled={!row.customer?.phone || !row.customerId || !row.planId || Boolean(paymentLinkSendingId)} onClick={() => onSendPaymentLink(row)} title={!row.customer?.phone ? "Customer phone number required" : "Customer-specific Razorpay payment link WhatsApp par bhejein"}><Icon name="send" />{paymentLinkSendingId === row.id ? "Creating link..." : "Send Payment Link"}</button><button className="subscription-subscriber-delete" type="button" onClick={() => { if (window.confirm(`Remove ${row.customer?.name || "this subscriber"}?`)) onDelete(row.id); }} aria-label={`Remove ${row.customer?.name || "subscriber"}`}><Icon name="trash" /></button></div>
             </article>
           ))}
         </div>
@@ -6208,7 +6240,7 @@ function CustomerPortal({ session, onLogout }) {
 
   useEffect(() => {
     let active = true;
-    const refreshFromDatabase = () => fetchBackendData(session.token)
+    const refreshFromDatabase = () => fetchBackendData(session.token, false)
       .then((backendData) => {
         if (!active) return;
         setData((current) => JSON.stringify(current) === JSON.stringify(backendData) ? current : backendData);
@@ -6254,10 +6286,12 @@ function CustomerPortal({ session, onLogout }) {
         if (error?.status !== 404) setLoadError(error.message || "Subscription status could not be loaded.");
       });
     refreshSubscription();
+    const refreshTimer = window.setInterval(refreshSubscription, 15000);
     const handleFocus = () => refreshSubscription();
     window.addEventListener("focus", handleFocus);
     return () => {
       active = false;
+      window.clearInterval(refreshTimer);
       window.removeEventListener("focus", handleFocus);
     };
   }, [session.token]);
