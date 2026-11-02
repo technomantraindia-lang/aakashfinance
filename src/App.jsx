@@ -1342,6 +1342,25 @@ async function fetchCustomerSubscription(token) {
   return result;
 }
 
+function loadRazorpayCheckout() {
+  if (typeof window === "undefined") return Promise.reject(new Error("Razorpay Checkout is available only in the web app."));
+  if (window.Razorpay) return Promise.resolve(window.Razorpay);
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
+    if (existing) {
+      existing.addEventListener("load", () => resolve(window.Razorpay));
+      existing.addEventListener("error", () => reject(new Error("Razorpay Checkout could not be loaded.")));
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => resolve(window.Razorpay);
+    script.onerror = () => reject(new Error("Razorpay Checkout could not be loaded."));
+    document.body.appendChild(script);
+  });
+}
+
 async function saveSubscriptionRequest(token, path, method, body) {
   const response = await fetch(`${API_BASE}/api${path}`, {
     method,
@@ -6071,7 +6090,7 @@ const customerNavItems = [
   ["chats", "Chats", "bell"],
 ];
 
-function SubscriptionExpiredModal({ visible, subscription, plan, paymentDetails, vehicleCount, onClose }) {
+function SubscriptionExpiredModal({ visible, subscription, plan, paymentDetails, vehicleCount, onUpgrade, upgradeLoading, onClose }) {
   if (!visible) return null;
   const amount = plan ? subscriptionPlanPrice(plan, vehicleCount) : 0;
   const paymentUrl = subscriptionPaymentPageLink(paymentDetails?.paymentLink, amount > 0 ? amount : undefined);
@@ -6094,10 +6113,10 @@ function SubscriptionExpiredModal({ visible, subscription, plan, paymentDetails,
           <p>Upgrade your plan to open My Fleet, Dues, Marketplace and Chats again.</p>
         </div>
         <div className="client-modal-actions subscription-expired-actions">
-          {paymentUrl ? <a className="primary-button" href={paymentUrl} target="_blank" rel="noreferrer">Upgrade plan{amount > 0 ? ` · ₹${amount.toLocaleString("en-IN")}` : ""}</a> : null}
+          {onUpgrade ? <button className="primary-button" type="button" onClick={onUpgrade} disabled={upgradeLoading}>{upgradeLoading ? "Opening payment..." : `Upgrade plan${amount > 0 ? ` · ₹${amount.toLocaleString("en-IN")}` : ""}`}</button> : paymentUrl ? <a className="primary-button" href={paymentUrl} target="_blank" rel="noreferrer">Upgrade plan{amount > 0 ? ` · ₹${amount.toLocaleString("en-IN")}` : ""}</a> : null}
           <button className="secondary-button" type="button" onClick={onClose}>{paymentUrl ? "Later" : "Close"}</button>
         </div>
-        {!paymentUrl && <p className="subscription-expired-hint">Please contact your administrator to add the payment link and renew your account.</p>}
+        {!paymentUrl && !onUpgrade && <p className="subscription-expired-hint">Please contact your administrator to add the payment link and renew your account.</p>}
       </section>
     </div>
   );
@@ -6111,10 +6130,11 @@ function CustomerPortal({ session, onLogout }) {
   const [openInterestListingId, setOpenInterestListingId] = useState(null);
   const [subscriptionState, setSubscriptionState] = useState({ subscription: null, plan: null, paymentDetails: {}, loading: true });
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [upgradeLoading, setUpgradeLoading] = useState(false);
   const subscriptionExpired = Boolean(subscriptionState.subscription?.endDate && subscriptionDaysRemaining(subscriptionState.subscription.endDate) < 0);
   const visibleNavItems = useMemo(
-    () => (subscriptionExpired ? customerNavItems.filter(([key]) => key === "dashboard") : customerNavItems.filter(([key]) => canOpenSection(data, session.role, key))),
-    [data, session.role, subscriptionExpired]
+    () => customerNavItems.filter(([key]) => canOpenSection(data, session.role, key)),
+    [data, session.role]
   );
   const openPortalSection = (key) => {
     if (subscriptionExpired && key !== "dashboard") {
@@ -6132,6 +6152,58 @@ function CustomerPortal({ session, onLogout }) {
   const openCustomerInterestChat = (listingId) => {
     setOpenInterestListingId(String(listingId));
     openPortalSection("chats");
+  };
+
+  const startPlanUpgrade = async () => {
+    const planId = subscriptionState.plan?.id;
+    if (!planId || upgradeLoading) return;
+    setUpgradeLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/subscriptions/checkout`, {
+        method: "POST",
+        headers: authHeaders(session.token, { "Content-Type": "application/json" }),
+        body: JSON.stringify({ planId })
+      });
+      const order = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(formatBackendError(order, response.status) || "Razorpay order could not be created.");
+      const Razorpay = await loadRazorpayCheckout();
+      const checkout = new Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency || "INR",
+        name: "Kuber Finance",
+        description: `${order.planName || "Subscription"} plan renewal`,
+        order_id: order.orderId,
+        prefill: {
+          name: myClient?.name || session.name || "Customer",
+          email: myClient?.email || session.email || ""
+        },
+        theme: { color: "#F5A623" },
+        modal: { ondismiss: () => setUpgradeLoading(false) },
+        handler: async (paymentResponse) => {
+          try {
+            const verified = await saveSubscriptionRequest(session.token, "/subscriptions/verify-payment", "POST", { ...paymentResponse, planId });
+            const refreshed = await fetchCustomerSubscription(session.token);
+            setSubscriptionState({
+              subscription: refreshed.subscription || verified.subscription || null,
+              plan: refreshed.plan || subscriptionState.plan,
+              paymentDetails: refreshed.paymentDetails || {},
+              loading: false
+            });
+            setUpgradeModalOpen(false);
+            setLoadError("Payment successful. Your subscription has been renewed.");
+          } catch (error) {
+            setLoadError(error.message || "Payment verification failed. Please contact Admin.");
+          } finally {
+            setUpgradeLoading(false);
+          }
+        }
+      });
+      checkout.open();
+    } catch (error) {
+      setUpgradeLoading(false);
+      setLoadError(error.message || "Razorpay checkout could not be opened.");
+    }
   };
 
   useEffect(() => {
@@ -6506,6 +6578,8 @@ function CustomerPortal({ session, onLogout }) {
         plan={subscriptionState.plan}
         paymentDetails={subscriptionState.paymentDetails}
         vehicleCount={subscriptionVehicleCount(data, customerClientId)}
+        onUpgrade={subscriptionState.plan ? startPlanUpgrade : null}
+        upgradeLoading={upgradeLoading}
         onClose={() => setUpgradeModalOpen(false)}
       />
       <aside className="sidebar customer-sidebar">
