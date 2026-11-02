@@ -1331,6 +1331,17 @@ async function fetchSubscriptionWorkspace(token) {
   return result;
 }
 
+async function fetchCustomerSubscription(token) {
+  const response = await fetch(`${API_BASE}/api/subscriptions/me`, { headers: authHeaders(token), cache: "no-store" });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(formatBackendError(result, response.status));
+    error.status = response.status;
+    throw error;
+  }
+  return result;
+}
+
 async function saveSubscriptionRequest(token, path, method, body) {
   const response = await fetch(`${API_BASE}/api${path}`, {
     method,
@@ -6060,17 +6071,57 @@ const customerNavItems = [
   ["chats", "Chats", "bell"],
 ];
 
+function SubscriptionExpiredModal({ visible, subscription, plan, paymentDetails, vehicleCount, onClose }) {
+  if (!visible) return null;
+  const amount = plan ? subscriptionPlanPrice(plan, vehicleCount) : 0;
+  const paymentUrl = subscriptionPaymentPageLink(paymentDetails?.paymentLink, amount > 0 ? amount : undefined);
+
+  return (
+    <div className="client-modal-backdrop subscription-expired-backdrop" role="presentation">
+      <section className="client-modal subscription-expired-modal" role="dialog" aria-modal="true" aria-labelledby="subscription-expired-title">
+        <div className="client-modal-head">
+          <div>
+            <span className="client-head-icon"><Icon name="lock" /></span>
+            <div>
+              <h2 id="subscription-expired-title">Plan expired</h2>
+              <span>Your dashboard is still available.</span>
+            </div>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="Close upgrade message"><Icon name="close" /></button>
+        </div>
+        <div className="subscription-expired-copy">
+          <p>Your <strong>{plan?.name || "subscription plan"}</strong> expired on <strong>{formatSubscriptionDate(subscription?.endDate)}</strong>.</p>
+          <p>Upgrade your plan to open My Fleet, Dues, Marketplace and Chats again.</p>
+        </div>
+        <div className="client-modal-actions subscription-expired-actions">
+          {paymentUrl ? <a className="primary-button" href={paymentUrl} target="_blank" rel="noreferrer">Upgrade plan{amount > 0 ? ` · ₹${amount.toLocaleString("en-IN")}` : ""}</a> : null}
+          <button className="secondary-button" type="button" onClick={onClose}>{paymentUrl ? "Later" : "Close"}</button>
+        </div>
+        {!paymentUrl && <p className="subscription-expired-hint">Please contact your administrator to add the payment link and renew your account.</p>}
+      </section>
+    </div>
+  );
+}
+
 function CustomerPortal({ session, onLogout }) {
   const marketplaceChat = useMarketplaceChat(API_BASE, session.token);
   const [section, setSection] = useState("dashboard");
   const [data, setData] = useState(loadData);
   const [loadError, setLoadError] = useState("");
   const [openInterestListingId, setOpenInterestListingId] = useState(null);
+  const [subscriptionState, setSubscriptionState] = useState({ subscription: null, plan: null, paymentDetails: {}, loading: true });
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const subscriptionExpired = Boolean(subscriptionState.subscription?.endDate && subscriptionDaysRemaining(subscriptionState.subscription.endDate) < 0);
   const visibleNavItems = useMemo(
-    () => customerNavItems.filter(([key]) => canOpenSection(data, session.role, key)),
-    [data, session.role]
+    () => (subscriptionExpired ? customerNavItems.filter(([key]) => key === "dashboard") : customerNavItems.filter(([key]) => canOpenSection(data, session.role, key))),
+    [data, session.role, subscriptionExpired]
   );
   const openPortalSection = (key) => {
+    if (subscriptionExpired && key !== "dashboard") {
+      setSection("dashboard");
+      setUpgradeModalOpen(true);
+      return;
+    }
     if (canOpenSection(data, session.role, key)) {
       setSection(key);
       return;
@@ -6110,6 +6161,40 @@ function CustomerPortal({ session, onLogout }) {
       stopRealtime();
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    const refreshSubscription = () => fetchCustomerSubscription(session.token)
+      .then((result) => {
+        if (!active) return;
+        setSubscriptionState({
+          subscription: result.subscription || null,
+          plan: result.plan || null,
+          paymentDetails: result.paymentDetails || {},
+          loading: false
+        });
+      })
+      .catch((error) => {
+        if (!active) return;
+        // Older backend deployments may not have this endpoint yet. Keep the
+        // portal usable and retry on the next focus/realtime refresh.
+        setSubscriptionState((current) => ({ ...current, loading: false }));
+        if (error?.status !== 404) setLoadError(error.message || "Subscription status could not be loaded.");
+      });
+    refreshSubscription();
+    const handleFocus = () => refreshSubscription();
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [session.token]);
+
+  useEffect(() => {
+    if (subscriptionExpired && section !== "dashboard") {
+      setSection("dashboard");
+    }
+  }, [section, subscriptionExpired]);
 
   const myClient = data.clients.find((c) => c.id === session.clientId)
     ?? data.clients.find((c) => session.email && c.email?.trim().toLowerCase() === session.email.trim().toLowerCase())
@@ -6188,7 +6273,7 @@ function CustomerPortal({ session, onLogout }) {
 
   const openDues = myDues.filter(isCustomerActiveTask);
   const attentionDues = openDues.filter((task) => task.type === "EMI" && isDateWithinNextDays(task.dueDate, reminderDaysForType(data.reminderSettings, "EMI")));
-  const sectionAllowed = section === "dashboard" || canOpenSection(data, session.role, section);
+  const sectionAllowed = section === "dashboard" || (!subscriptionExpired && canOpenSection(data, session.role, section));
   const myDocuments = useMemo(
     () => (data.documents ?? []).filter((document) => myVehicles.some((vehicle) => vehicle.id === document.vehicleId)),
     [data, myVehicles]
@@ -6415,6 +6500,14 @@ function CustomerPortal({ session, onLogout }) {
   return (
     <main className="app-shell customer-shell">
       {loadError && <div className="toast error" role="alert">{loadError}</div>}
+      <SubscriptionExpiredModal
+        visible={upgradeModalOpen}
+        subscription={subscriptionState.subscription}
+        plan={subscriptionState.plan}
+        paymentDetails={subscriptionState.paymentDetails}
+        vehicleCount={subscriptionVehicleCount(data, customerClientId)}
+        onClose={() => setUpgradeModalOpen(false)}
+      />
       <aside className="sidebar customer-sidebar">
         <div className="brand">
           <span className="brand-mark">

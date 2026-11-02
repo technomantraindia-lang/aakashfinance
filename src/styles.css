@@ -2694,6 +2694,67 @@ button:disabled {
   color: #091A31;
 }
 
+.subscription-expired-backdrop {
+  z-index: 120;
+}
+
+.subscription-expired-modal {
+  max-width: 500px;
+}
+
+.subscription-expired-modal .client-modal-head > div:first-child {
+  align-items: center;
+}
+
+.subscription-expired-modal .client-modal-head h2 {
+  color: #FFD166;
+}
+
+.subscription-expired-copy {
+  color: #DCEBFF;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 16px 2px 6px;
+}
+
+.subscription-expired-copy p {
+  margin: 0 0 9px;
+}
+
+.subscription-expired-copy strong {
+  color: #FFFFFF;
+}
+
+.subscription-expired-actions {
+  margin-top: 12px;
+}
+
+.subscription-expired-actions > a,
+.subscription-expired-actions > button {
+  align-items: center;
+  display: inline-flex;
+  flex: 1;
+  justify-content: center;
+  min-height: 46px;
+  text-decoration: none;
+}
+
+.subscription-expired-actions .primary-button {
+  background: linear-gradient(135deg, #F5A623, #F08C00);
+  border: 1px solid #FFC04D;
+  border-radius: 8px;
+  color: #091A31;
+  font-weight: 700;
+}
+
+.subscription-expired-hint {
+  color: #9DB7D7;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 13px 0 0;
+  text-align: center;
+}
+
 .clients-table {
   border-collapse: separate;
   border-spacing: 0;
