@@ -17248,6 +17248,86 @@ textarea {
   }
 }
 
+/* Subscription customers are grouped by expiry state. */
+.subscription-subscriber-group-head {
+  align-items: center;
+  background: linear-gradient(135deg, rgba(20, 47, 84, .96), rgba(13, 33, 61, .98));
+  border: 1px solid #31577f;
+  border-left: 3px solid #4cc9a0;
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  margin: 18px 0 2px;
+  padding: 11px 15px;
+}
+
+.subscription-subscriber-group-head:first-child { margin-top: 0; }
+.subscription-subscriber-group-head h3 { color: #f5f8fd; font-size: 14px; margin: 0; }
+.subscription-subscriber-group-head p { color: #86a4c7; font-size: 11px; margin: 4px 0 0; }
+.subscription-subscriber-group-head > strong {
+  align-items: center;
+  background: #17365e;
+  border: 1px solid #416e9e;
+  border-radius: 999px;
+  color: #f5f8fd;
+  display: inline-flex;
+  font-size: 12px;
+  height: 28px;
+  justify-content: center;
+  min-width: 28px;
+  padding: 0 8px;
+}
+
+.subscription-subscriber-group-head-expired { border-left-color: #ff8a80; }
+.subscription-subscriber-group-head-expired > strong { background: rgba(255, 138, 128, .12); border-color: rgba(255, 138, 128, .55); color: #ffb7b0; }
+.subscription-subscriber-group-head-due-soon { border-left-color: #f0a500; }
+.subscription-subscriber-group-head-due-soon > strong { background: rgba(240, 165, 0, .12); border-color: rgba(240, 165, 0, .55); color: #ffd66b; }
+.subscription-subscriber-group-head-active > strong { background: rgba(76, 201, 160, .12); border-color: rgba(76, 201, 160, .55); color: #70d7b2; }
+
+.subscription-subscriber-pagination {
+  align-items: center;
+  background: rgba(20, 47, 84, .72);
+  border: 1px solid #31577f;
+  border-radius: 10px;
+  color: #86a4c7;
+  display: flex;
+  font-size: 11px;
+  justify-content: space-between;
+  margin: 2px 0 8px;
+  padding: 9px 12px;
+}
+
+.subscription-subscriber-pagination div { display: flex; gap: 7px; }
+.subscription-subscriber-pagination button {
+  background: #17365e;
+  border: 1px solid #416e9e;
+  border-radius: 7px;
+  color: #f5f8fd;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+  min-height: 29px;
+  padding: 0 10px;
+}
+.subscription-subscriber-pagination button:hover:not(:disabled) { border-color: #f0a500; color: #ffd66b; }
+.subscription-subscriber-pagination button:disabled { cursor: not-allowed; opacity: .4; }
+.subscription-subscriber-pagination-expired { border-color: rgba(255, 138, 128, .35); }
+.subscription-subscriber-pagination-due-soon { border-color: rgba(240, 165, 0, .35); }
+.subscription-subscriber-pagination-active { border-color: rgba(76, 201, 160, .35); }
+
+@media (max-width: 680px) {
+  .subscription-subscriber-group-head {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .subscription-subscriber-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 9px;
+  }
+}
+
 /* Responsive admin workspace: keep every module usable from phones to wide screens. */
 @media (max-width: 1100px) {
   .sidebar-inner {

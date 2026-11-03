@@ -27,12 +27,14 @@ import {
 function getApiBase() {
   // The production API is deployed at the ERP backend hostname.
   const deployedBackend = "https://erp.aakashfinance.com";
+  const configuredBase = String(import.meta.env.VITE_API_BASE_URL || "").trim().replace(/\/$/, "");
+  // The configured production API is used for both local previews and hosted
+  // builds so the web app always reads the same live customer database.
+  if (configuredBase) return configuredBase;
   if (typeof window !== "undefined") {
     return import.meta.env.DEV ? "" : deployedBackend;
   }
-  const envBase = import.meta.env.VITE_API_BASE_URL;
-  if (envBase) return envBase.replace(/\/$/, "");
-  return deployedBackend;
+  return configuredBase || deployedBackend;
 }
 
 const API_BASE = getApiBase();
@@ -3467,7 +3469,7 @@ function SubscriptionPanel({ plans = [], subscribers = [], data = { clients: [],
         <div>
           <span className="subscription-page-kicker">SUBSCRIPTION OVERVIEW</span>
           <h1>Subscription dashboard</h1>
-          <p>Customer subscriptions, renewals aur monthly growth ek jagah.</p>
+          <p>Customer subscriptions, renewals, and monthly growth in one place.</p>
         </div>
         <span className={`subscription-dashboard-live${subscriptionError ? " warning" : ""}`} title={subscriptionError}><i />{subscriptionError ? "Sync pending" : "Live workspace"}</span>
       </div>
@@ -3482,15 +3484,15 @@ function SubscriptionPanel({ plans = [], subscribers = [], data = { clients: [],
 
       <section className="subscription-dashboard-columns">
         <article className="settings-card subscription-dashboard-section">
-          <div className="compact-card-head"><span className="settings-card-icon"><Icon name="money" /></span><div><h3>Available plans</h3><p>Current pricing tiers aur billing cycle.</p></div></div>
-          {plans.length === 0 ? <div className="subscription-dashboard-empty"><Icon name="money" /><strong>No plans yet</strong><span>Plans section se apna pehla plan create karein.</span></div> : (
+          <div className="compact-card-head"><span className="settings-card-icon"><Icon name="money" /></span><div><h3>Available plans</h3><p>Current pricing tiers and billing cycle.</p></div></div>
+          {plans.length === 0 ? <div className="subscription-dashboard-empty"><Icon name="money" /><strong>No plans yet</strong><span>Create your first plan from the Plans section.</span></div> : (
             <div className="subscription-dashboard-plan-preview">
               {plans.slice(0, 3).map((plan) => <div key={plan.id}><strong>{plan.name}</strong><span>{plan.pricingTiers?.length ? "Tiered vehicle pricing" : `₹${Number(plan.price || 0).toLocaleString("en-IN")}`} · {plan.billingCycle}</span></div>)}
             </div>
           )}
         </article>
         <article className="settings-card subscription-dashboard-section subscription-monthly-chart-card">
-          <div className="compact-card-head"><span className="settings-card-icon"><Icon name="chart" /></span><div><h3>Monthly subscriptions</h3><p>Har month kitne customers ne plan liya.</p></div><div className="subscription-chart-controls"><label htmlFor="subscription-year">Year</label><select id="subscription-year" value={selectedSubscriptionYear} onChange={(event) => setSelectedSubscriptionYear(Number(event.target.value))}>{subscriptionYears.map((year) => <option key={year} value={year}>{year}</option>)}</select><strong className="subscription-chart-total">{selectedYearSubscriptions} in {selectedSubscriptionYear}</strong></div></div>
+          <div className="compact-card-head"><span className="settings-card-icon"><Icon name="chart" /></span><div><h3>Monthly subscriptions</h3><p>See how many customers started a plan each month.</p></div><div className="subscription-chart-controls"><label htmlFor="subscription-year">Year</label><select id="subscription-year" value={selectedSubscriptionYear} onChange={(event) => setSelectedSubscriptionYear(Number(event.target.value))}>{subscriptionYears.map((year) => <option key={year} value={year}>{year}</option>)}</select><strong className="subscription-chart-total">{selectedYearSubscriptions} in {selectedSubscriptionYear}</strong></div></div>
           <div className="subscription-monthly-chart-scroll">
             <div className="subscription-monthly-chart" aria-label="Monthly subscription chart">
               {monthlySubscriptions.map((item) => (
@@ -3504,7 +3506,7 @@ function SubscriptionPanel({ plans = [], subscribers = [], data = { clients: [],
               ))}
             </div>
           </div>
-          <p className="subscription-chart-footnote">Count customer ke start date ya created date se auto update hota hai. This month: {subscriptionsThisMonth} new subscription{subscriptionsThisMonth === 1 ? "" : "s"}.</p>
+          <p className="subscription-chart-footnote">Counts update automatically from the customer's start or creation date. This month: {subscriptionsThisMonth} new subscription{subscriptionsThisMonth === 1 ? "" : "s"}.</p>
         </article>
       </section>
     </section>
@@ -3532,7 +3534,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
     ["dashboard", "Dashboard", "home"],
     ["plans", "Plans", "money"],
     ["subscribers", "Subscribers", "people"],
-    ["customers", "Customers", "person"]
+    ["customers", "Customers", "person"],
   ];
   const activeLabel = sidebarItems.find(([key]) => key === activeView)?.[1] || "Dashboard";
   const openSubscriptionView = (view) => {
@@ -3571,8 +3573,8 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
         if (!paymentEditedRef.current) setPaymentDetails(remotePayment);
         setSubscriptionError("");
         const persistPlans = Promise.all(plansToPersist.map((plan) => saveSubscriptionRequest(session.token, "/subscription-plans", "POST", plan)));
-        persistPlans.catch((error) => {
-          if (active) setSubscriptionError(error.message || "Plan database me save nahi ho saka.");
+          persistPlans.catch((error) => {
+          if (active) setSubscriptionError(error.message || "The plan could not be saved to the database.");
         });
         if (!remotePlans.length) {
           persistPlans.then(() => Promise.all(localSubscribers.map((subscriber) => saveSubscriptionRequest(session.token, "/subscription-subscribers", "POST", subscriber)))).catch(() => {});
@@ -3580,11 +3582,11 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
         const remoteHasPayment = Boolean(remote.paymentDetails?.paymentLink || remote.paymentDetails?.qrCodeUrl);
         if (!remoteHasPayment && (localPayment.paymentLink || localPayment.qrCodeUrl)) {
           saveSubscriptionRequest(session.token, "/subscription-payment", "PUT", localPayment)
-            .catch((error) => { if (active) setSubscriptionError(error.message || "Payment details database me save nahi ho sake."); });
+            .catch((error) => { if (active) setSubscriptionError(error.message || "Payment details could not be saved to the database."); });
         }
       })
       .catch((error) => {
-        if (active) setSubscriptionError(error.status === 404 ? "Database sync API available nahi hai. Backend restart/deploy ke baad subscription data database se sync hoga." : error.message || "Subscription data load nahi ho saka.");
+        if (active) setSubscriptionError(error.status === 404 ? "The database sync API is not available. Restart or deploy the backend and try again." : error.message || "Subscription data could not be loaded.");
       });
     return () => { active = false; };
   }, [session.token]);
@@ -3611,7 +3613,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
           setSubscriptionError("");
         })
         .catch((error) => {
-          if (active) setSubscriptionError(error.message || "Subscription data refresh nahi ho saka.");
+          if (active) setSubscriptionError(error.message || "Subscription data could not be refreshed.");
         })
         .finally(() => {
           busy = false;
@@ -3629,23 +3631,23 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
   const createPlan = (draft) => {
     const plan = { ...draft, id: `subscription-plan-${Date.now()}`, createdAt: new Date().toISOString() };
     setPlans((current) => [plan, ...current]);
-    saveSubscriptionRequest(session.token, "/subscription-plans", "POST", plan).catch((error) => setSubscriptionError(error.message || "Plan database me save nahi ho saka."));
+    saveSubscriptionRequest(session.token, "/subscription-plans", "POST", plan).catch((error) => setSubscriptionError(error.message || "The plan could not be saved to the database."));
   };
 
   const deletePlan = (planId) => {
     setPlans((current) => current.filter((plan) => plan.id !== planId));
-    saveSubscriptionRequest(session.token, `/subscription-plans/${encodeURIComponent(planId)}`, "DELETE", {}).catch((error) => setSubscriptionError(error.message || "Plan database se remove nahi ho saka."));
+    saveSubscriptionRequest(session.token, `/subscription-plans/${encodeURIComponent(planId)}`, "DELETE", {}).catch((error) => setSubscriptionError(error.message || "The plan could not be removed from the database."));
   };
 
   const createSubscriber = (draft) => {
     const subscriber = { ...draft, id: `subscription-${Date.now()}`, createdAt: new Date().toISOString() };
     setSubscribers((current) => [subscriber, ...current]);
-    saveSubscriptionRequest(session.token, "/subscription-subscribers", "POST", subscriber).catch((error) => setSubscriptionError(error.message || "Subscriber database me save nahi ho saka."));
+    saveSubscriptionRequest(session.token, "/subscription-subscribers", "POST", subscriber).catch((error) => setSubscriptionError(error.message || "The subscriber could not be saved to the database."));
   };
 
   const deleteSubscriber = (subscriberId) => {
     setSubscribers((current) => current.filter((subscriber) => subscriber.id !== subscriberId));
-    saveSubscriptionRequest(session.token, `/subscription-subscribers/${encodeURIComponent(subscriberId)}`, "DELETE", {}).catch((error) => setSubscriptionError(error.message || "Subscriber database se remove nahi ho saka."));
+    saveSubscriptionRequest(session.token, `/subscription-subscribers/${encodeURIComponent(subscriberId)}`, "DELETE", {}).catch((error) => setSubscriptionError(error.message || "The subscriber could not be removed from the database."));
   };
 
   const persistPaymentDetails = (next) => {
@@ -3657,7 +3659,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
       })
       .catch((error) => {
         setPaymentSaveState("error");
-        setSubscriptionError(error.message || "Payment details database me save nahi ho sake.");
+        setSubscriptionError(error.message || "Payment details could not be saved to the database.");
         return false;
       });
   };
@@ -3702,7 +3704,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
       clickablePaymentLink = String(paymentLink.shortUrl || "").trim();
       if (!clickablePaymentLink) throw new Error("Razorpay payment link could not be created.");
     } catch (error) {
-      setSubscriptionError(error.message || "Razorpay payment link create nahi ho saka.");
+      setSubscriptionError(error.message || "The Razorpay payment link could not be created.");
       return;
     } finally {
       setPaymentLinkSendingId("");
@@ -3728,7 +3730,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
       downloadSubscriptionInvoiceFile(invoice);
     } catch (error) {
       console.error("Subscription invoice PDF download failed", error);
-      setInvoiceDownloadError("Invoice PDF download nahi ho saki. Dobara try karein.");
+      setInvoiceDownloadError("The invoice PDF could not be downloaded. Please try again.");
     } finally {
       setInvoiceDownloadId("");
     }
@@ -3749,7 +3751,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
         setCustomerData({ clients: nextData.clients ?? [], vehicles: nextData.vehicles ?? [] });
         })
         .catch((error) => {
-          if (active) setCustomerError(error.message || "Customer list load nahi ho saki.");
+          if (active) setCustomerError(error.message || "The customer list could not be loaded.");
         })
         .finally(() => {
           busy = false;
@@ -3809,7 +3811,7 @@ function StandaloneSubscriptionPanel({ session, onLogout }) {
           <section className="subscription-workspace-placeholder">
             <Icon name="money" />
             <h2>{activeLabel}</h2>
-            <p>Ye section ready hai. Aap jo details bologe, isi jagah add kar denge.</p>
+            <p>This section is ready. Additional details can be added here.</p>
           </section>
         )}
       </section>
@@ -3848,11 +3850,11 @@ function SubscriptionTierPlanForm({ onCreate, onClose }) {
 
   return (
     <form className="subscription-plan-form" onSubmit={submitPlan}>
-      <div className="subscription-form-head"><div><h3>New subscription plan</h3><p>Vehicle range ke hisaab se per-vehicle price set karein.</p></div><span>Workspace only</span></div>
+        <div className="subscription-form-head"><div><h3>New subscription plan</h3><p>Set the per-vehicle rate for each vehicle range.</p></div><span>Workspace only</span></div>
       <div className="subscription-plan-form-grid">
         <label><span>Plan name</span><input name="name" value={draft.name} onChange={updateDraft} placeholder="Basic plan" required /></label>
         <label><span>Billing cycle</span><select name="billingCycle" value={draft.billingCycle} onChange={updateDraft}><option>Monthly</option><option>Quarterly</option><option>Yearly</option><option>One-time</option></select></label>
-        <div className="subscription-tier-editor subscription-plan-form-wide"><div className="subscription-tier-editor-head"><div><span>Vehicle pricing tiers</span><small>Active vehicle count ke hisaab se per-vehicle rate</small></div><b>Rate (₹)</b></div>{draft.pricingTiers.map((tier, index) => <label key={`${tier.min}-${tier.max ?? "plus"}`}><span>{tier.label}</span><input value={tier.rate} onChange={(event) => updateTierRate(index, event.target.value)} type="number" min="0" step="1" placeholder="100" required /></label>)}</div>
+        <div className="subscription-tier-editor subscription-plan-form-wide"><div className="subscription-tier-editor-head"><div><span>Vehicle pricing tiers</span><small>Set the per-vehicle rate based on the active vehicle count</small></div><b>Rate (₹)</b></div>{draft.pricingTiers.map((tier, index) => <label key={`${tier.min}-${tier.max ?? "plus"}`}><span>{tier.label}</span><input value={tier.rate} onChange={(event) => updateTierRate(index, event.target.value)} type="number" min="0" step="1" placeholder="100" required /></label>)}</div>
         <label className="subscription-plan-form-wide"><span>Description</span><input name="description" value={draft.description} onChange={updateDraft} placeholder="For small fleet teams" /></label>
         <label className="subscription-plan-form-wide"><span>Features <small>comma separated</small></span><input name="features" value={draft.features} onChange={updateDraft} placeholder="Fleet tracking, EMI alerts, Reports" /></label>
       </div>
@@ -3870,7 +3872,7 @@ function SubscriptionPlans({ plans, onCreate, onDelete }) {
         <div>
           <span className="subscription-page-kicker">PLAN MANAGEMENT</span>
           <h2>Create subscription plans</h2>
-          <p>Ye plans sirf Subscription workspace me rahenge. Customer app ya Admin web par koi effect nahi hoga.</p>
+          <p>These plans are managed only in the Subscription workspace and do not affect the Customer app or Admin web.</p>
         </div>
         <button className="subscription-primary-button" type="button" onClick={() => setFormOpen((current) => !current)}><Icon name="plus" />{formOpen ? "Close form" : "Create plan"}</button>
       </div>
@@ -3878,7 +3880,7 @@ function SubscriptionPlans({ plans, onCreate, onDelete }) {
       {formOpen && <SubscriptionTierPlanForm onCreate={onCreate} onClose={() => setFormOpen(false)} />}
       {false && (
         <form className="subscription-plan-form" onSubmit={submitPlan}>
-          <div className="subscription-form-head"><div><h3>New subscription plan</h3><p>Plan details yahan save honge.</p></div><span>Workspace only</span></div>
+          <div className="subscription-form-head"><div><h3>New subscription plan</h3><p>Plan details will be saved here.</p></div><span>Workspace only</span></div>
           <div className="subscription-plan-form-grid">
             <label><span>Plan name</span><input name="name" value={draft.name} onChange={updateDraft} placeholder="Basic plan" required /></label>
             <label><span>Price (₹)</span><input name="price" value={draft.price} onChange={updateDraft} type="number" min="0" step="1" placeholder="999" required /></label>
@@ -3891,7 +3893,7 @@ function SubscriptionPlans({ plans, onCreate, onDelete }) {
       )}
 
       {plans.length === 0 ? (
-        <div className="subscription-customers-empty subscription-plans-empty"><Icon name="money" /><strong>No plans created</strong><span>Create plan button se subscription plan add karein.</span></div>
+        <div className="subscription-customers-empty subscription-plans-empty"><Icon name="money" /><strong>No plans created</strong><span>Use the Create plan button to add a subscription plan.</span></div>
       ) : (
         <div className="subscription-plan-grid">
           {plans.map((plan) => (
@@ -3913,6 +3915,8 @@ function SubscriptionPlans({ plans, onCreate, onDelete }) {
 function SubscriptionSubscribers({ data, plans, subscribers, invoiceDownloadId, invoiceDownloadError, paymentLinkSendingId, onCreate, onDelete, onSendPaymentLink, onDownloadInvoice, loading, error, onOpenPlans }) {
   const [formOpen, setFormOpen] = useState(false);
   const [testDateMode, setTestDateMode] = useState(false);
+  const [subscriberPages, setSubscriberPages] = useState({});
+  const SUBSCRIBERS_PER_PAGE = 5;
   const today = new Date().toISOString().slice(0, 10);
   const [draft, setDraft] = useState({ customerId: "", planId: "", startDate: today, endDate: "" });
   const selectedCustomerVehicleCount = subscriptionVehicleCount(data, draft.customerId);
@@ -3957,6 +3961,29 @@ function SubscriptionSubscribers({ data, plans, subscribers, invoiceDownloadId, 
     const currentRate = subscriptionPlanRate(plan, Math.max(1, vehicleCount)) ?? 0;
     return { ...subscriber, customer, plan, vehicleCount, currentRate, days, status, currentPrice: subscriptionPlanPrice(plan, vehicleCount) };
   }).sort((first, second) => (first.days ?? 99999) - (second.days ?? 99999));
+  const subscriberGroups = [
+    {
+      key: "expired",
+      label: "Expired customers",
+      description: "These subscriptions have passed their expiry date.",
+      rows: subscriberRows.filter((row) => row.days !== null && row.days < 0)
+    },
+    {
+      key: "due-soon",
+      label: "Payment due soon",
+      description: "Renewal or payment is required within the next 30 days.",
+      rows: subscriberRows.filter((row) => row.days !== null && row.days >= 0 && row.days <= 30)
+    },
+    {
+      key: "active",
+      label: "Active customers",
+      description: "These subscriptions are currently active.",
+      rows: subscriberRows.filter((row) => row.days === null || row.days > 30)
+    }
+  ];
+  const subscriberGroupFor = (row) => row.status === "Expired"
+    ? subscriberGroups[0]
+    : row.status === "Expiring soon" ? subscriberGroups[1] : subscriberGroups[2];
 
   return (
     <section className="subscription-subscribers-page">
@@ -3964,18 +3991,18 @@ function SubscriptionSubscribers({ data, plans, subscribers, invoiceDownloadId, 
         <div>
           <span className="subscription-page-kicker">SUBSCRIBER MONITOR</span>
           <h2>Subscriptions & expiry</h2>
-          <p>Vehicle count change hote hi current price auto recalculate hoti rahegi.</p>
+          <p>The current price is recalculated automatically when the vehicle count changes.</p>
         </div>
         <button className="subscription-primary-button" type="button" onClick={() => setFormOpen((current) => !current)} disabled={!plans.length || !data.clients.length}><Icon name="plus" />{formOpen ? "Close form" : "Add subscriber"}</button>
       </div>
 
       {(!plans.length || !data.clients.length) && !loading && !error && (
-        <div className="subscription-subscriber-notice"><Icon name="info" /><span>{!plans.length ? "Pehle Plans section me plan create karein." : "Customer data available nahi hai."}</span>{!plans.length && <button type="button" onClick={onOpenPlans}>Open Plans</button>}</div>
+        <div className="subscription-subscriber-notice"><Icon name="info" /><span>{!plans.length ? "Create a plan first in the Plans section." : "Customer data is not available."}</span>{!plans.length && <button type="button" onClick={onOpenPlans}>Open Plans</button>}</div>
       )}
 
       {formOpen && (
         <form className="subscription-subscriber-form" onSubmit={submitSubscriber}>
-          <div className="subscription-form-head"><div><h3>Assign a subscription</h3><p>Customer ko plan aur expiry date ke saath add karein.</p></div><div className="subscription-form-tools"><span>Workspace only</span><label className="subscription-test-date-toggle"><input type="checkbox" checked={testDateMode} onChange={toggleTestDateMode} /><b>Test date mode</b><small>WhatsApp test ke liye</small></label></div></div>
+          <div className="subscription-form-head"><div><h3>Assign a subscription</h3><p>Assign a plan and expiry date to a customer.</p></div><div className="subscription-form-tools"><span>Workspace only</span><label className="subscription-test-date-toggle"><input type="checkbox" checked={testDateMode} onChange={toggleTestDateMode} /><b>Test date mode</b><small>For WhatsApp testing</small></label></div></div>
           <div className="subscription-subscriber-form-grid">
             <label><span>Customer</span><select name="customerId" value={draft.customerId} onChange={updateDraft} required><option value="">Select customer</option>{data.clients.map((client) => <option value={client.id} key={client.id}>{client.name}</option>)}</select></label>
             <label><span>Plan</span><select name="planId" value={draft.planId} onChange={updateDraft} required><option value="">Select plan</option>{plans.map((plan) => <option value={plan.id} key={plan.id}>{plan.name} · ₹{Number(plan.price || 0).toLocaleString("en-IN")}</option>)}</select></label>
@@ -3990,15 +4017,30 @@ function SubscriptionSubscribers({ data, plans, subscribers, invoiceDownloadId, 
       {invoiceDownloadError && <div className="subscription-invoice-error"><Icon name="info" /><span>{invoiceDownloadError}</span></div>}
 
       {loading ? (
-        <div className="subscription-customers-empty"><Icon name="people" /><strong>Checking subscriptions...</strong><span>Customer vehicles ka latest count load ho raha hai.</span></div>
+        <div className="subscription-customers-empty"><Icon name="people" /><strong>Checking subscriptions...</strong><span>The latest customer vehicle count is loading.</span></div>
       ) : error ? (
         <div className="subscription-customers-empty subscription-customers-error"><Icon name="info" /><strong>Subscription data unavailable</strong><span>{error}</span></div>
       ) : subscriberRows.length === 0 ? (
-        <div className="subscription-customers-empty"><Icon name="people" /><strong>No subscribers added</strong><span>Add subscriber karke customer ka plan aur expiry track karein.</span></div>
+        <div className="subscription-customers-empty"><Icon name="people" /><strong>No subscribers added</strong><span>Add a subscriber to track the customer's plan and expiry.</span></div>
       ) : (
         <div className="subscription-subscriber-list">
-          {subscriberRows.map((row) => (
-            <article className="subscription-subscriber-card" key={row.id}>
+          {subscriberRows.map((row) => {
+            const group = subscriberGroupFor(row);
+            const groupIndex = group.rows.findIndex((item) => item.id === row.id);
+            const pageCount = Math.max(1, Math.ceil(group.rows.length / SUBSCRIBERS_PER_PAGE));
+            const currentPage = Math.min(subscriberPages[group.key] || 0, pageCount - 1);
+            const firstVisibleIndex = currentPage * SUBSCRIBERS_PER_PAGE;
+            if (groupIndex < firstVisibleIndex || groupIndex >= firstVisibleIndex + SUBSCRIBERS_PER_PAGE) return null;
+            const showGroupHeading = groupIndex === firstVisibleIndex;
+            return (
+              <Fragment key={row.id}>
+                {showGroupHeading && (
+                  <div className={`subscription-subscriber-group-head subscription-subscriber-group-head-${group.key}`}>
+                    <div><h3>{group.label}</h3><p>{group.description}</p></div>
+                    <strong>{group.rows.length}</strong>
+                  </div>
+                )}
+                <article className="subscription-subscriber-card">
               <div className="subscription-subscriber-main">
                 <span className="subscription-subscriber-avatar">{String(row.customer?.name || "?").slice(0, 1).toUpperCase()}</span>
                 <div><h3>{row.customer?.name || "Customer unavailable"}</h3><span>{row.plan?.name || "Plan unavailable"}</span></div>
@@ -4006,9 +4048,20 @@ function SubscriptionSubscribers({ data, plans, subscribers, invoiceDownloadId, 
               <div className="subscription-subscriber-stat"><small>Vehicles</small><strong>{row.vehicleCount}</strong><span>active count</span></div>
               <div className="subscription-subscriber-stat"><small>Current price</small><strong>₹{row.currentPrice.toLocaleString("en-IN")}</strong><span>auto calculated</span></div>
               <div className="subscription-subscriber-stat"><small>Expiry</small><strong>{formatSubscriptionDate(row.endDate)}</strong><span className={`subscription-expiry-status ${row.status === "Expired" ? "expired" : row.status === "Expiring soon" ? "soon" : "active"}`}><i />{row.days === null ? "No date" : row.days < 0 ? `${Math.abs(row.days)} days overdue` : row.days === 0 ? "Expires today" : `${row.days} days left`}</span></div>
-              <div className="subscription-subscriber-actions"><button className="subscription-download-button" type="button" disabled={invoiceDownloadId === row.id} onClick={() => onDownloadInvoice(row)}><Icon name="download" />{invoiceDownloadId === row.id ? "Preparing PDF..." : "Download PDF"}</button><button className="subscription-reminder-button" type="button" disabled={!row.customer?.phone || !row.customerId || !row.planId || Boolean(paymentLinkSendingId)} onClick={() => onSendPaymentLink(row)} title={!row.customer?.phone ? "Customer phone number required" : "Customer-specific Razorpay payment link WhatsApp par bhejein"}><Icon name="send" />{paymentLinkSendingId === row.id ? "Creating link..." : "Send Payment Link"}</button><button className="subscription-subscriber-delete" type="button" onClick={() => { if (window.confirm(`Remove ${row.customer?.name || "this subscriber"}?`)) onDelete(row.id); }} aria-label={`Remove ${row.customer?.name || "subscriber"}`}><Icon name="trash" /></button></div>
-            </article>
-          ))}
+      <div className="subscription-subscriber-actions"><button className="subscription-download-button" type="button" disabled={invoiceDownloadId === row.id} onClick={() => onDownloadInvoice(row)}><Icon name="download" />{invoiceDownloadId === row.id ? "Preparing PDF..." : "Download PDF"}</button><button className="subscription-reminder-button" type="button" disabled={!row.customer?.phone || !row.customerId || !row.planId || Boolean(paymentLinkSendingId)} onClick={() => onSendPaymentLink(row)} title={!row.customer?.phone ? "Customer phone number required" : "Send the customer-specific Razorpay payment link via WhatsApp"}><Icon name="send" />{paymentLinkSendingId === row.id ? "Creating link..." : "Send Payment Link"}</button><button className="subscription-subscriber-delete" type="button" onClick={() => { if (window.confirm(`Remove ${row.customer?.name || "this subscriber"}?`)) onDelete(row.id); }} aria-label={`Remove ${row.customer?.name || "subscriber"}`}><Icon name="trash" /></button></div>
+                </article>
+                {group.rows.length > SUBSCRIBERS_PER_PAGE && groupIndex === Math.min(firstVisibleIndex + SUBSCRIBERS_PER_PAGE, group.rows.length) - 1 && (
+                  <div className={`subscription-subscriber-pagination subscription-subscriber-pagination-${group.key}`}>
+                    <span>{group.label}: Page {currentPage + 1} of {pageCount}</span>
+                    <div>
+                      <button type="button" disabled={currentPage === 0} onClick={() => setSubscriberPages((pages) => ({ ...pages, [group.key]: currentPage - 1 }))}>Previous</button>
+                      <button type="button" disabled={currentPage >= pageCount - 1} onClick={() => setSubscriberPages((pages) => ({ ...pages, [group.key]: currentPage + 1 }))}>Next</button>
+                    </div>
+                  </div>
+                )}
+              </Fragment>
+            );
+          })}
         </div>
       )}
     </section>
@@ -6163,17 +6216,11 @@ function CustomerPortal({ session, onLogout }) {
   const [subscriptionState, setSubscriptionState] = useState({ subscription: null, plan: null, paymentDetails: {}, loading: true });
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [upgradeLoading, setUpgradeLoading] = useState(false);
-  const subscriptionExpired = Boolean(subscriptionState.subscription?.endDate && subscriptionDaysRemaining(subscriptionState.subscription.endDate) < 0);
   const visibleNavItems = useMemo(
     () => customerNavItems.filter(([key]) => canOpenSection(data, session.role, key)),
     [data, session.role]
   );
   const openPortalSection = (key) => {
-    if (subscriptionExpired && key !== "dashboard") {
-      setSection("dashboard");
-      setUpgradeModalOpen(true);
-      return;
-    }
     if (canOpenSection(data, session.role, key)) {
       setSection(key);
       return;
@@ -6296,12 +6343,6 @@ function CustomerPortal({ session, onLogout }) {
     };
   }, [session.token]);
 
-  useEffect(() => {
-    if (subscriptionExpired && section !== "dashboard") {
-      setSection("dashboard");
-    }
-  }, [section, subscriptionExpired]);
-
   const myClient = data.clients.find((c) => c.id === session.clientId)
     ?? data.clients.find((c) => session.email && c.email?.trim().toLowerCase() === session.email.trim().toLowerCase())
     ?? data.clients.find((c) => c.name?.toLowerCase() === session.name?.toLowerCase())
@@ -6379,7 +6420,7 @@ function CustomerPortal({ session, onLogout }) {
 
   const openDues = myDues.filter(isCustomerActiveTask);
   const attentionDues = openDues.filter((task) => task.type === "EMI" && isDateWithinNextDays(task.dueDate, reminderDaysForType(data.reminderSettings, "EMI")));
-  const sectionAllowed = section === "dashboard" || (!subscriptionExpired && canOpenSection(data, session.role, section));
+  const sectionAllowed = section === "dashboard" || canOpenSection(data, session.role, section);
   const myDocuments = useMemo(
     () => (data.documents ?? []).filter((document) => myVehicles.some((vehicle) => vehicle.id === document.vehicleId)),
     [data, myVehicles]
