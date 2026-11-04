@@ -6216,11 +6216,22 @@ function CustomerPortal({ session, onLogout }) {
   const [subscriptionState, setSubscriptionState] = useState({ subscription: null, plan: null, paymentDetails: {}, loading: true });
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [upgradeLoading, setUpgradeLoading] = useState(false);
+  const daysRemaining = subscriptionDaysRemaining(subscriptionState.subscription?.endDate);
+  const subscriptionExpired = Boolean(
+    subscriptionState.subscription?.endDate
+    && daysRemaining !== null
+    && daysRemaining < 0
+  );
   const visibleNavItems = useMemo(
     () => customerNavItems.filter(([key]) => canOpenSection(data, session.role, key)),
     [data, session.role]
   );
   const openPortalSection = (key) => {
+    if (subscriptionExpired && key !== "dashboard") {
+      setSection("dashboard");
+      setUpgradeModalOpen(true);
+      return;
+    }
     if (canOpenSection(data, session.role, key)) {
       setSection(key);
       return;
@@ -6342,6 +6353,13 @@ function CustomerPortal({ session, onLogout }) {
       window.removeEventListener("focus", handleFocus);
     };
   }, [session.token]);
+
+  useEffect(() => {
+    if (subscriptionExpired && section !== "dashboard") {
+      setSection("dashboard");
+      setUpgradeModalOpen(true);
+    }
+  }, [section, subscriptionExpired]);
 
   const myClient = data.clients.find((c) => c.id === session.clientId)
     ?? data.clients.find((c) => session.email && c.email?.trim().toLowerCase() === session.email.trim().toLowerCase())
